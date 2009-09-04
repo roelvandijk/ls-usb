@@ -1,0 +1,21 @@
+name:          ls-usb
+version:       0.1
+cabal-version: >= 1.6
+build-type:    Simple
+stability:     experimental
+author:        Roel van Dijk, Bas van Dijk
+maintainer:    vandijk.roel@gmail.com
+copyright:     2009 Roel van Dijk, Bas van Dijk
+license:       BSD3
+license-file:  LICENSE
+category:      System
+synopsis:      List USB devices
+
+executable ls-usb
+  build-depends: base            >= 4.0     && < 4.2
+               , bytestring      >= 0.9.1.4 && < 1.0
+               , pretty          >= 1.0.1   && < 1.1
+               , usb             >= 0.1     && < 0.2
+               , usb-id-database >= 0.1     && < 0.2
+  ghc-options: -Wall
+  main-is: ls-usb.hs
