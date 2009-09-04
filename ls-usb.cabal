@@ -14,8 +14,8 @@ synopsis:      List USB devices
 executable ls-usb
   build-depends: base            >= 4.0     && < 4.2
                , bytestring      >= 0.9.1.4 && < 1.0
-               , pretty          >= 1.0.1   && < 1.1
+               , ansi-wl-pprint  >= 0.5     && < 0.6
                , usb             >= 0.1     && < 0.2
                , usb-id-database >= 0.1     && < 0.2
-  ghc-options: -Wall
+  ghc-options: -Wall -fno-warn-orphans
   main-is: ls-usb.hs

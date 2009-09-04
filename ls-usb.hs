@@ -4,103 +4,79 @@ module Main where
 
 import Prelude hiding (catch)
 
-import Control.Exception     (catch)
-import Control.Monad         (liftM)
-import Data.ByteString.Char8 (ByteString, unpack)
-import Data.Char             (toLower)
-import Data.List             (intersperse, transpose)
-import Data.Word             (Word8, Word16)
+import Control.Exception            (catch)
+import Control.Monad                (liftM)
+import Data.ByteString.Char8        (ByteString, unpack)
+import Data.Char                    (toLower)
+import Data.List                    (intersperse, transpose)
+import Data.Word                    (Word8, Word16)
 import System.USB
-import System.USB.IDDB       (VendorDB, vdbDefault, vendorName)
-import Text.PrettyPrint
+import System.USB.IDDB              (VendorDB, vdbDefault, vendorName)
+import Text.PrettyPrint.ANSI.Leijen
+import Text.Printf                  (PrintfArg, printf)
+
+-------------------------------------------------------------------------------
+-- Program entry point
+
+main :: IO ()
+main = do db <- vdbDefault
+          ctx <- newUSBCtx
+          setDebug ctx PrintInfo
+          putDoc =<< ppDeviceList db =<< getDeviceList ctx
+          putStrLn ""
+
+-------------------------------------------------------------------------------
+-- Pretty printing styles
+
+sectionStyle :: Pretty a => a -> Doc
+sectionStyle = underline . bold . white . pretty
+
+fieldStyle :: Pretty a => a -> Doc
+fieldStyle = white . pretty
+
+numberStyle :: Pretty a => a -> Doc
+numberStyle = yellow . pretty
+
+stringStyle :: Pretty a => a -> Doc
+stringStyle = green . pretty
+
+versionStyle :: Pretty a => a -> Doc
+versionStyle = cyan . pretty
+
+addressStyle :: Pretty a => a -> Doc
+addressStyle = magenta . pretty
 
 -------------------------------------------------------------------------------
 
-class Document a where
-    doc :: a -> Doc
+field :: String -> Doc
+field = fieldStyle . text
 
-instance Document Doc where
-    doc = id
-
-instance Document Bool where
-    doc = text . show
-
-instance Document String where
-    doc = text
-
-instance Document ByteString where
-    doc = doc . unpack
-
-instance Document Int where
-    doc = int
-
-instance Document Word8 where
-    doc = int . fromIntegral
-
-instance Document Word16 where
-    doc = int . fromIntegral
-
-instance Document BCD4 where
-    doc (a, b, c, d) = hcat $ punctuate (char '.') $ map doc [a, b, c, d]
-
-instance Document DeviceStatus where
-    doc ds = columns 2 [ "Remote wakeup" .: remoteWakeup ds
-                       , "Self powered"  .: selfPowered  ds
-                       ]
-
-instance Document USBEndpointDescriptor where
-    doc ep = columns 2 [ "Address"         .: endpointAddress       ep
-                       , "Attributes"      .: endpointAttributes    ep
-                       , "Max packet size" .: endpointMaxPacketSize ep
-                       , "Interval"        .: endpointInterval      ep
-                       , "Refresh"         .: endpointRefresh       ep
-                       , "Synch address"   .: endpointSynchAddress  ep
-                       , "Extra"           .: endpointExtra         ep
-                       ]
-
-instance Document EndpointAddress where
-    doc ea = int (endpointNumber ea)
-             <+> char '-'
-             <+> doc (endpointDirection ea)
-
-instance Document TransferDirection where
-    doc Out = text "host"   <+> text "->" <+> text "device"
-    doc In  = text "device" <+> text "->" <+> text "host"
-
-instance Document EndpointSynchronization where
-    doc NoSynchronization = text "no synchronization"
-    doc es                = text $ map toLower $ show es
-
-instance Document EndpointUsage where
-    doc = text . map toLower . show
-
-instance Document EndpointMaxPacketSize where
-    doc mps = int (maxPacketSize mps)
-              <+> char '-'
-              <+> doc (transactionOpportunities mps)
-
-instance Document EndpointTransactionOpportunities where
-    doc NoAdditionalTransactions         = text "no additional transactions"
-    doc OneAdditionlTransaction          = text "one additional transaction"
-    doc TwoAdditionalTransactions        = text "two additional transactions"
-    doc ReservedTransactionOpportunities = text "reserved transactional opportunities"
-
-instance Document EndpointTransferType where
-    doc (Isochronous s u) = text "isochronous"
-                            <+> char '-' <+> text "synch:" <+> doc s
-                            <+> char '-' <+> text "usage:" <+> doc u
-    doc tt                = text $ map toLower $ show tt
+section :: String -> Doc
+section = sectionStyle . text
 
 -------------------------------------------------------------------------------
+-- Some basic instances of the Pretty class
 
-(.:) :: (Document a, Document b) => a -> b -> [Doc]
-x .: y = [doc x <> char ':', doc y]
+instance Pretty ByteString where
+    pretty = pretty . unpack
+
+instance Pretty Word8 where
+    pretty = int . fromIntegral
+
+instance Pretty Word16 where
+    pretty = int . fromIntegral
+
+-------------------------------------------------------------------------------
+-- Miscellaneous pretty printing functions
+
+(.:) :: (Pretty a) => String -> a -> [Doc]
+x .: y = [field x <> char ':', pretty y]
 
 infixr 0 .:
 
 columns :: Int -> [[Doc]] -> Doc
 columns s rows = vcat $ map ( hcat
-                            . map (uncurry padr)
+                            . map (uncurry fill)
                             . zip (map (+s) $ columnSizes rows)
                             )
                             rows
@@ -108,35 +84,51 @@ columns s rows = vcat $ map ( hcat
 columnSizes :: [[Doc]] -> [Int]
 columnSizes = map (maximum . map docLen) . transpose
 
+-- A bit of a hack to calculate the length of a document without
+-- considering colour codes.
 docLen :: Doc -> Int
-docLen = length . render
-
-padr :: Int -> Doc -> Doc
-padr w d = d <> text (replicate (w - docLen d ) ' ')
-
-padl :: Int -> Doc -> Doc
-padl w d = text (replicate (w - docLen d ) ' ') <> d
+docLen = sdocLen . renderPretty 0.4 100
+    where
+      sdocLen :: SimpleDoc -> Int
+      sdocLen (SEmpty)      = 0
+      sdocLen (SChar _ d)   = 1 + sdocLen d
+      sdocLen (SText i _ d) = i + sdocLen d
+      sdocLen (SLine i d)   = i + sdocLen d
+      sdocLen (SSGR _ d)    = sdocLen d
 
 -------------------------------------------------------------------------------
+-- USB utility functions
+
+stringBufferSize :: Int
+stringBufferSize = 512
 
 catchUSBError :: IO a -> (USBError -> IO a) -> IO a
 catchUSBError = catch
 
 getDescriptor :: USBDevice -> Ix -> IO Doc
 getDescriptor dev ix = catchUSBError ( withUSBDeviceHandle dev $ \devH ->
-                                       liftM doc $ getStringDescriptorAscii devH ix 512
-                                     ) $ \e -> return $ text "Couldn't retrieve string descriptor:"
-                                                        <+> text (show e)
+                                       liftM (green . pretty)
+                                       $ getStringDescriptorAscii devH ix stringBufferSize
+                                     )
+                                     $ \e -> return
+                                           $ dullred
+                                           $ text "Couldn't retrieve string descriptor:"
+                                             <+> red (text $ show e)
 
 -------------------------------------------------------------------------------
+-- Pretty printers for USB types
 
-main :: IO ()
-main = do db <- vdbDefault
-          ctx <- newUSBCtx
-          setDebug ctx PrintInfo
-          putStrLn . render =<< ppDeviceList db =<< getDeviceList ctx
+ppId :: PrintfArg n => n -> Doc
+ppId x = text (printf "%04x" x :: String)
 
--------------------------------------------------------------------------------
+ppVendorId :: VendorDB -> Word16 -> Doc
+ppVendorId db vid = numberStyle (text "0x" <> ppId vid)
+                    <+> ppVendorName db vid
+
+ppVendorName:: VendorDB -> Word16 -> Doc
+ppVendorName db vid = maybe empty
+                            (parens . stringStyle)
+                            (vendorName db (fromIntegral vid))
 
 ppDeviceList :: VendorDB -> [USBDevice] -> IO Doc
 ppDeviceList db = liftM (vcat . intersperse (char ' '))
@@ -149,18 +141,25 @@ ppDevice db dev = do
     desc    <- getDeviceDescriptor dev
     descDoc <- ppDeviceDescriptor db dev desc
 
-    return $ columns 2 [ "Bus number" .: busNum
-                       , "Address"    .: devAddr
-                       ]
-             $+$ text "Device descriptor:"
-             $$  nest 2 descDoc
+    let vid = deviceIdVendor desc
+        pid = deviceIdProduct desc
+
+    return $ text "Bus"
+             <+> addressStyle (printf "%03d" busNum :: String)
+             <+> text "Device"
+             <+> addressStyle (printf "%03d" devAddr :: String)
+             <>  char ':'
+             <+> text "ID"
+             <+> numberStyle (ppId vid)
+             <>  char ':'
+             <>  numberStyle (ppId pid)
+             <+> stringStyle (ppVendorName db vid)
+             <$> section "Device descriptor"
+             <$> indent 2 descDoc
 
 ppDeviceDescriptor :: VendorDB -> USBDevice -> USBDeviceDescriptor -> IO Doc
 ppDeviceDescriptor db dev desc = do
-    let ppVendorID vid = doc vid <+> maybe empty
-                                           (parens . doc)
-                                           (vendorName db (fromIntegral vid))
-        manufacturerIx = deviceManufacturerIx desc
+    let manufacturerIx = deviceManufacturerIx desc
         productIx      = deviceProductIx      desc
         serialIx       = deviceSerialNumberIx desc
         numConfigs     = deviceNumConfigs     desc
@@ -173,19 +172,22 @@ ppDeviceDescriptor db dev desc = do
     configDocs      <- mapM (ppConfigDescriptor dev) configDescriptors
 
     return $ columns 2
-      [ "USB specification" .: deviceUSBSpecReleaseNumber desc
-      , "Class"             .: deviceClass                desc
-      , "Sub class"         .: deviceSubClass             desc
-      , "Protocol"          .: deviceProtocol             desc
-      , "Max packet size"   .: deviceMaxPacketSize0       desc
-      , "Vendor ID"         .: ppVendorID (deviceIdVendor desc)
-      , "Product ID"        .: deviceIdProduct            desc
-      , "Release number"    .: deviceReleaseNumber        desc
-      , "Manufacturer"      .: doc manufacturerIx <+> parens manufacturerDoc
-      , "Product"           .: doc productIx      <+> parens productDoc
-      , "Serial number"     .: doc serialIx       <+> parens serialDoc
-      , "Num configs"       .: numConfigs
-      ] $+$ vcat (map (\d -> text "Configuration descriptor:" $$ nest 2 d) configDocs)
+      [ "USB specification" .: versionStyle  (deviceUSBSpecReleaseNumber desc)
+      , "Class"             .: numberStyle   (deviceClass          desc)
+      , "Sub class"         .: numberStyle   (deviceSubClass       desc)
+      , "Protocol"          .: numberStyle   (deviceProtocol       desc)
+      , "Max packet size"   .: numberStyle   (deviceMaxPacketSize0 desc)
+      , "Vendor ID"         .: ppVendorId db (deviceIdVendor       desc)
+      , "Product ID"        .: numberStyle   (text "0x" <> ppId (deviceIdProduct desc))
+      , "Release number"    .: versionStyle  (deviceReleaseNumber  desc)
+      , "Manufacturer"      .: addressStyle manufacturerIx <+> parens manufacturerDoc
+      , "Product"           .: addressStyle productIx      <+> parens productDoc
+      , "Serial number"     .: addressStyle serialIx       <+> parens serialDoc
+      , "Num configs"       .: numberStyle numConfigs
+      ] <$> vcat ( map (\d -> section "Configuration descriptor"
+                              <$> indent 2 d)
+                   configDocs
+                 )
 
 ppConfigDescriptor :: USBDevice -> USBConfigDescriptor -> IO Doc
 ppConfigDescriptor dev conf = do
@@ -195,19 +197,18 @@ ppConfigDescriptor dev conf = do
   stringDescriptor <- getDescriptor dev stringIx
   ifDescDocs       <- mapM (mapM $ ppInterfaceDescriptor dev) ifDescs
 
-  let vcatAlternatives = ($$) (text "Interface:")
-                       . nest 2
+  let vcatAlternatives = (<$>) (section "Interface")
+                       . indent 2
                        . vcat
-                       . map (($$) (text "Alternative:") . nest 2)
+                       . map ((<$>) (section "Alternative") . indent 2)
 
   return $ columns 2
-    [ "Value"          .: configValue conf
-    , "Descriptor"     .: doc stringIx <+> parens stringDescriptor
-    , "Attributes"     .: doc (configAttributes conf)
-    , "Max power"      .: doc (2 * configMaxPower conf) <+> text "mA"
-    , "Num interfaces" .: configNumInterfaces conf
-    , "Extra"          .: configExtra conf
-    ] $+$ vcat (map vcatAlternatives ifDescDocs)
+    [ "Value"          .: numberStyle (configValue conf)
+    , "Descriptor"     .: addressStyle stringIx <+> parens stringDescriptor
+    , "Attributes"     .: pretty (configAttributes conf)
+    , "Max power"      .: pretty (2 * configMaxPower conf) <+> text "mA"
+    , "Num interfaces" .: numberStyle (configNumInterfaces conf)
+    ] <$> vcat (map vcatAlternatives ifDescDocs)
 
 ppInterfaceDescriptor :: USBDevice -> USBInterfaceDescriptor -> IO Doc
 ppInterfaceDescriptor dev ifDesc = do
@@ -216,14 +217,66 @@ ppInterfaceDescriptor dev ifDesc = do
   stringDescriptor <- getDescriptor dev stringIx
 
   return $ columns 2
-    [ "Interface number"    .: interfaceNumber       ifDesc
-    , "Alternative setting" .: interfaceAltSetting   ifDesc
-    , "Class"               .: interfaceClass        ifDesc
-    , "Sub class"           .: interfaceSubClass     ifDesc
-    , "Protocol"            .: interfaceProtocol     ifDesc
-    , "Descriptor"          .: doc stringIx <+> parens stringDescriptor
-    , "Num endpoints"       .: interfaceNumEndpoints ifDesc
-    , "Extra"               .: interfaceExtra        ifDesc
-    ] $+$ vcat ( map (\e -> text "Endpoint:" $$ nest 2 (doc e))
+    [ "Interface number"    .: numberStyle (interfaceNumber       ifDesc)
+    , "Alternative setting" .: numberStyle (interfaceAltSetting   ifDesc)
+    , "Class"               .: numberStyle (interfaceClass        ifDesc)
+    , "Sub class"           .: numberStyle (interfaceSubClass     ifDesc)
+    , "Protocol"            .: numberStyle (interfaceProtocol     ifDesc)
+    , "Descriptor"          .: addressStyle stringIx <+> parens stringDescriptor
+    , "Num endpoints"       .: numberStyle (interfaceNumEndpoints ifDesc)
+    ] <$> vcat ( map (\e -> section "Endpoint" <$> indent 2 (pretty e))
                      $ interfaceEndpoints ifDesc
                )
+-------------------------------------------------------------------------------
+-- USB specific instances of Pretty
+
+instance Pretty BCD4 where
+    pretty (a, b, c, d) = hcat $ punctuate (char '.') $ map pretty [a, b, c, d]
+
+instance Pretty DeviceStatus where
+    pretty ds = align
+           $ columns 2 [ "Remote wakeup" .: remoteWakeup ds
+                       , "Self powered"  .: selfPowered  ds
+                       ]
+
+instance Pretty USBEndpointDescriptor where
+    pretty ep = columns 2 [ "Address"         .: endpointAddress       ep
+                       , "Attributes"      .: endpointAttributes    ep
+                       , "Max packet size" .: endpointMaxPacketSize ep
+                       , "Interval"        .: numberStyle  (endpointInterval      ep)
+                       , "Refresh"         .: numberStyle  (endpointRefresh       ep)
+                       , "Synch address"   .: addressStyle (endpointSynchAddress  ep)
+                       ]
+
+instance Pretty EndpointAddress where
+    pretty ea = addressStyle (endpointNumber ea)
+                <+> char '-'
+                <+> pretty (endpointDirection ea)
+
+instance Pretty TransferDirection where
+    pretty Out = text "host"   <+> text "->" <+> text "device"
+    pretty In  = text "device" <+> text "->" <+> text "host"
+
+instance Pretty EndpointSynchronization where
+    pretty NoSynchronization = text "no synchronization"
+    pretty es                = text $ map toLower $ show es
+
+instance Pretty EndpointUsage where
+    pretty = text . map toLower . show
+
+instance Pretty EndpointMaxPacketSize where
+    pretty mps = numberStyle (maxPacketSize mps)
+                 <+> char '-'
+                 <+> pretty (transactionOpportunities mps)
+
+instance Pretty EndpointTransactionOpportunities where
+    pretty NoAdditionalTransactions         = text "no additional transactions"
+    pretty OneAdditionlTransaction          = text "one additional transaction"
+    pretty TwoAdditionalTransactions        = text "two additional transactions"
+    pretty ReservedTransactionOpportunities = text "reserved transactional opportunities"
+
+instance Pretty EndpointTransferType where
+    pretty (Isochronous s u) = text "isochronous"
+                               <+> char '-' <+> text "synch:" <+> pretty s
+                               <+> char '-' <+> text "usage:" <+> pretty u
+    pretty tt                = text $ map toLower $ show tt
