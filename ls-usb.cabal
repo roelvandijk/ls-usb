@@ -12,10 +12,10 @@ category:      System
 synopsis:      List USB devices
 
 executable ls-usb
-  build-depends: base            >= 4.0     && < 4.2
-               , bytestring      >= 0.9.1.4 && < 1.0
-               , ansi-wl-pprint  >= 0.5     && < 0.6
-               , usb             >= 0.1     && < 0.2
-               , usb-id-database >= 0.1     && < 0.2
+  build-depends: ansi-wl-pprint  == 0.5.*
+               , base            >= 4.0 && < 4.2
+               , bytestring      == 0.9.*
+               , usb             == 0.1.*
+               , usb-id-database == 0.2.*
   ghc-options: -Wall -fno-warn-orphans
   main-is: ls-usb.hs

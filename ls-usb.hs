@@ -4,26 +4,58 @@ module Main where
 
 import Prelude hiding (catch)
 
-import Control.Exception            (catch)
-import Control.Monad                (liftM)
-import Data.ByteString.Char8        (ByteString, unpack)
-import Data.Char                    (toLower)
-import Data.List                    (intersperse, transpose)
-import Data.Word                    (Word8, Word16)
+import Control.Exception              (catch)
+import Control.Monad                  (liftM)
+import Data.ByteString.Char8          (ByteString, unpack)
+import Data.Char                      (toLower)
+import Data.List                      (intersperse, transpose)
+import Data.Word                      (Word8, Word16)
+import System.Console.GetOpt          ( OptDescr(..)
+                                      , ArgDescr(..)
+                                      , ArgOrder(..)
+                                      , getOpt
+                                      , usageInfo
+                                      )
+import System.Environment             (getArgs)
 import System.USB
-import System.USB.IDDB              (VendorDB, vdbDefault, vendorName)
+import System.USB.IDDB                (IDDB, vendorName, productName)
+import System.USB.IDDB.LinuxUsbIdRepo (staticDb)
 import Text.PrettyPrint.ANSI.Leijen
-import Text.Printf                  (PrintfArg, printf)
+import Text.Printf                    (PrintfArg, printf)
 
 -------------------------------------------------------------------------------
--- Program entry point
+-- Main
+
+data Flag = Verbose | Help deriving Eq
+
+options :: [OptDescr Flag]
+options = [ Option ['v'] ["verbose"] (NoArg Verbose)
+                   "Give verbose output"
+          , Option ['h'] ["help"] (NoArg Help)
+                   "Shows information regarding the usage of this program"
+          ]
+
+header :: String
+header = "Usage: ls-usb [OPTION...]"
+
+parseArgs :: IO (Either String [Flag])
+parseArgs = do args <- getArgs
+               return $ case getOpt RequireOrder options args of
+                 (os, _, []) -> Right os
+                 (_,  _, es) -> Left $ concat es ++ usageInfo header options
 
 main :: IO ()
-main = do db <- vdbDefault
-          ctx <- newUSBCtx
-          setDebug ctx PrintInfo
-          putDoc =<< ppDeviceList db =<< getDeviceList ctx
-          putStrLn ""
+main = either putStrLn prog =<< parseArgs
+    where
+      prog flags = do let help    = Help    `elem` flags
+                          verbose = Verbose `elem` flags
+                      if help
+                        then putStrLn $ usageInfo header options
+                        else do db <- staticDb
+                                ctx <- newUSBCtx
+                                putDoc =<< ppDeviceList db verbose
+                                       =<< getDeviceList ctx
+                                putStrLn ""
 
 -------------------------------------------------------------------------------
 -- Pretty printing styles
@@ -105,41 +137,52 @@ stringBufferSize = 512
 catchUSBError :: IO a -> (USBError -> IO a) -> IO a
 catchUSBError = catch
 
-getDescriptor :: USBDevice -> Ix -> IO Doc
-getDescriptor dev ix = catchUSBError ( withUSBDeviceHandle dev $ \devH ->
-                                       liftM (green . pretty)
-                                       $ getStringDescriptorAscii devH ix stringBufferSize
-                                     )
-                                     $ \e -> return
-                                           $ dullred
-                                           $ text "Couldn't retrieve string descriptor:"
-                                             <+> red (text $ show e)
-
 -------------------------------------------------------------------------------
 -- Pretty printers for USB types
+
+ppStringDescr :: USBDevice -> Ix -> (Doc -> Doc) -> IO Doc
+ppStringDescr _   0  _ = return empty
+ppStringDescr dev ix f = catchUSBError
+                           ( withUSBDeviceHandle dev $ \devH ->
+                               liftM (green . pretty)
+                                     $ getStringDescriptorAscii devH
+                                                                ix
+                                                                stringBufferSize
+                           )
+                           (return . ppErr)
+    where ppErr e = f $ dullred $ text "Couldn't retrieve string descriptor:"
+                                  <+> red (text $ show e)
 
 ppId :: PrintfArg n => n -> Doc
 ppId x = text (printf "%04x" x :: String)
 
-ppVendorId :: VendorDB -> Word16 -> Doc
+ppVendorId :: IDDB -> Word16 -> Doc
 ppVendorId db vid = numberStyle (text "0x" <> ppId vid)
-                    <+> ppVendorName db vid
+                    <+> ppVendorName db vid parens
 
-ppVendorName:: VendorDB -> Word16 -> Doc
-ppVendorName db vid = maybe empty
-                            (parens . stringStyle)
-                            (vendorName db (fromIntegral vid))
+ppProductId :: IDDB -> Word16 -> Word16 -> Doc
+ppProductId db vid pid = numberStyle (text "0x" <> ppId pid)
+                         <+> ppProductName db vid pid parens
 
-ppDeviceList :: VendorDB -> [USBDevice] -> IO Doc
-ppDeviceList db = liftM (vcat . intersperse (char ' '))
-                  . mapM (ppDevice db)
+ppVendorName :: IDDB -> Word16 -> (Doc -> Doc) -> Doc
+ppVendorName db vid f = maybe empty (f . stringStyle) $ vendorName db vid'
+    where vid' = fromIntegral vid
 
-ppDevice :: VendorDB -> USBDevice -> IO Doc
-ppDevice db dev = do
+ppProductName :: IDDB -> Word16 -> Word16 -> (Doc -> Doc) -> Doc
+ppProductName db vid pid f = maybe empty (f . stringStyle) $ productName db vid' pid'
+    where vid' = fromIntegral vid
+          pid' = fromIntegral pid
+
+ppDeviceList :: IDDB -> Bool -> [USBDevice] -> IO Doc
+ppDeviceList db False = liftM vcat . mapM (ppDeviceShort db)
+ppDeviceList db True  = liftM (vcat . intersperse (char ' '))
+                      . mapM (ppDevice db)
+
+ppDeviceShort :: IDDB -> USBDevice -> IO Doc
+ppDeviceShort db dev = do
     busNum  <- getBusNumber        dev
     devAddr <- getDeviceAddress    dev
     desc    <- getDeviceDescriptor dev
-    descDoc <- ppDeviceDescriptor db dev desc
 
     let vid = deviceIdVendor desc
         pid = deviceIdProduct desc
@@ -153,11 +196,18 @@ ppDevice db dev = do
              <+> numberStyle (ppId vid)
              <>  char ':'
              <>  numberStyle (ppId pid)
-             <+> stringStyle (ppVendorName db vid)
-             <$> section "Device descriptor"
-             <$> indent 2 descDoc
+             <+> ppVendorName db vid (<+> ppProductName db vid pid (char '-' <+>))
 
-ppDeviceDescriptor :: VendorDB -> USBDevice -> USBDeviceDescriptor -> IO Doc
+ppDevice :: IDDB -> USBDevice -> IO Doc
+ppDevice db dev = do shortDesc <- ppDeviceShort db dev
+                     desc      <- getDeviceDescriptor dev
+                     descDoc   <- ppDeviceDescriptor db dev desc
+
+                     return $ shortDesc
+                              <$> section "Device descriptor"
+                              <$> indent 2 descDoc
+
+ppDeviceDescriptor :: IDDB -> USBDevice -> USBDeviceDescriptor -> IO Doc
 ppDeviceDescriptor db dev desc = do
     let manufacturerIx = deviceManufacturerIx desc
         productIx      = deviceProductIx      desc
@@ -166,9 +216,9 @@ ppDeviceDescriptor db dev desc = do
 
     configDescriptors <- mapM (getConfigDescriptor dev) [0 .. numConfigs - 1]
 
-    manufacturerDoc <- getDescriptor dev manufacturerIx
-    productDoc      <- getDescriptor dev productIx
-    serialDoc       <- getDescriptor dev serialIx
+    manufacturerDoc <- ppStringDescr dev manufacturerIx parens
+    productDoc      <- ppStringDescr dev productIx      parens
+    serialDoc       <- ppStringDescr dev serialIx       parens
     configDocs      <- mapM (ppConfigDescriptor dev) configDescriptors
 
     return $ columns 2
@@ -177,12 +227,12 @@ ppDeviceDescriptor db dev desc = do
       , "Sub class"         .: numberStyle   (deviceSubClass       desc)
       , "Protocol"          .: numberStyle   (deviceProtocol       desc)
       , "Max packet size"   .: numberStyle   (deviceMaxPacketSize0 desc)
-      , "Vendor ID"         .: ppVendorId db (deviceIdVendor       desc)
-      , "Product ID"        .: numberStyle   (text "0x" <> ppId (deviceIdProduct desc))
+      , "Vendor ID"         .: ppVendorId  db (deviceIdVendor desc)
+      , "Product ID"        .: ppProductId db (deviceIdVendor desc) (deviceIdProduct desc)
       , "Release number"    .: versionStyle  (deviceReleaseNumber  desc)
-      , "Manufacturer"      .: addressStyle manufacturerIx <+> parens manufacturerDoc
-      , "Product"           .: addressStyle productIx      <+> parens productDoc
-      , "Serial number"     .: addressStyle serialIx       <+> parens serialDoc
+      , "Manufacturer"      .: addressStyle manufacturerIx <+> manufacturerDoc
+      , "Product"           .: addressStyle productIx      <+> productDoc
+      , "Serial number"     .: addressStyle serialIx       <+> serialDoc
       , "Num configs"       .: numberStyle numConfigs
       ] <$> vcat ( map (\d -> section "Configuration descriptor"
                               <$> indent 2 d)
@@ -194,7 +244,7 @@ ppConfigDescriptor dev conf = do
   let stringIx = configIx         conf
       ifDescs  = configInterfaces conf
 
-  stringDescriptor <- getDescriptor dev stringIx
+  stringDescriptor <- ppStringDescr dev stringIx parens
   ifDescDocs       <- mapM (mapM $ ppInterfaceDescriptor dev) ifDescs
 
   let vcatAlternatives = (<$>) (section "Interface")
@@ -204,7 +254,7 @@ ppConfigDescriptor dev conf = do
 
   return $ columns 2
     [ "Value"          .: numberStyle (configValue conf)
-    , "Descriptor"     .: addressStyle stringIx <+> parens stringDescriptor
+    , "Descriptor"     .: addressStyle stringIx <+> stringDescriptor
     , "Attributes"     .: pretty (configAttributes conf)
     , "Max power"      .: pretty (2 * configMaxPower conf) <+> text "mA"
     , "Num interfaces" .: numberStyle (configNumInterfaces conf)
@@ -214,7 +264,7 @@ ppInterfaceDescriptor :: USBDevice -> USBInterfaceDescriptor -> IO Doc
 ppInterfaceDescriptor dev ifDesc = do
   let stringIx = interfaceIx ifDesc
 
-  stringDescriptor <- getDescriptor dev stringIx
+  stringDescriptor <- ppStringDescr dev stringIx parens
 
   return $ columns 2
     [ "Interface number"    .: numberStyle (interfaceNumber       ifDesc)
@@ -222,7 +272,7 @@ ppInterfaceDescriptor dev ifDesc = do
     , "Class"               .: numberStyle (interfaceClass        ifDesc)
     , "Sub class"           .: numberStyle (interfaceSubClass     ifDesc)
     , "Protocol"            .: numberStyle (interfaceProtocol     ifDesc)
-    , "Descriptor"          .: addressStyle stringIx <+> parens stringDescriptor
+    , "Descriptor"          .: addressStyle stringIx <+> stringDescriptor
     , "Num endpoints"       .: numberStyle (interfaceNumEndpoints ifDesc)
     ] <$> vcat ( map (\e -> section "Endpoint" <$> indent 2 (pretty e))
                      $ interfaceEndpoints ifDesc
