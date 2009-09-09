@@ -5,7 +5,7 @@ module Main where
 import Prelude hiding (catch)
 
 import Control.Exception              (catch)
-import Control.Monad                  (liftM)
+import Control.Monad                  (filterM, foldM, liftM, mapM)
 import Data.ByteString.Char8          (ByteString, unpack)
 import Data.Char                      (toLower)
 import Data.List                      (intersperse, transpose)
@@ -18,7 +18,13 @@ import System.Console.GetOpt          ( OptDescr(..)
                                       )
 import System.Environment             (getArgs)
 import System.USB
-import System.USB.IDDB                (IDDB, vendorName, productName)
+import System.USB.IDDB                ( IDDB
+                                      , vendorName
+                                      , productName
+                                      , className
+                                      , subClassName
+                                      , protocolName
+                                      )
 import System.USB.IDDB.LinuxUsbIdRepo (staticDb)
 import Text.PrettyPrint.ANSI.Leijen
 import Text.Printf                    (PrintfArg, printf)
@@ -54,8 +60,27 @@ main = either putStrLn prog =<< parseArgs
                         else do db <- staticDb
                                 ctx <- newUSBCtx
                                 putDoc =<< ppDeviceList db verbose
+                                       =<< filterDeviceList [const $ return True]
                                        =<< getDeviceList ctx
                                 putStrLn ""
+
+-------------------------------------------------------------------------------
+-- Filters
+
+type DeviceFilter = USBDeviceDescriptor -> IO Bool
+
+filterDeviceList :: [DeviceFilter] -> [USBDevice] -> IO [USBDevice]
+filterDeviceList fs devs = foldM filterOnce devs fs
+
+filterOnce :: [USBDevice] -> DeviceFilter -> IO [USBDevice]
+filterOnce devs f = liftM (map fst) . filterM (f . snd) . zip devs
+                     =<< mapM getDeviceDescriptor devs
+
+filterVID :: VendorID -> DeviceFilter
+filterVID vid desc = return $ vid == deviceIdVendor desc
+
+filterPID :: ProductID -> DeviceFilter
+filterPID pid desc = return $ pid == deviceIdProduct desc
 
 -------------------------------------------------------------------------------
 -- Pretty printing styles
@@ -80,8 +105,8 @@ addressStyle = magenta . pretty
 
 -------------------------------------------------------------------------------
 
-field :: String -> Doc
-field = fieldStyle . text
+field :: String -> [Doc] -> [Doc]
+field name xs = ((fieldStyle $ text $ name) <> char ':') : xs
 
 section :: String -> Doc
 section = sectionStyle . text
@@ -100,11 +125,6 @@ instance Pretty Word16 where
 
 -------------------------------------------------------------------------------
 -- Miscellaneous pretty printing functions
-
-(.:) :: (Pretty a) => String -> a -> [Doc]
-x .: y = [field x <> char ':', pretty y]
-
-infixr 0 .:
 
 columns :: Int -> [[Doc]] -> Doc
 columns s rows = vcat $ map ( hcat
@@ -144,7 +164,7 @@ ppStringDescr :: USBDevice -> Ix -> (Doc -> Doc) -> IO Doc
 ppStringDescr _   0  _ = return empty
 ppStringDescr dev ix f = catchUSBError
                            ( withUSBDeviceHandle dev $ \devH ->
-                               liftM (green . pretty)
+                               liftM (f . green . pretty)
                                      $ getStringDescriptorAscii devH
                                                                 ix
                                                                 stringBufferSize
@@ -156,14 +176,6 @@ ppStringDescr dev ix f = catchUSBError
 ppId :: PrintfArg n => n -> Doc
 ppId x = text (printf "%04x" x :: String)
 
-ppVendorId :: IDDB -> Word16 -> Doc
-ppVendorId db vid = numberStyle (text "0x" <> ppId vid)
-                    <+> ppVendorName db vid parens
-
-ppProductId :: IDDB -> Word16 -> Word16 -> Doc
-ppProductId db vid pid = numberStyle (text "0x" <> ppId pid)
-                         <+> ppProductName db vid pid parens
-
 ppVendorName :: IDDB -> Word16 -> (Doc -> Doc) -> Doc
 ppVendorName db vid f = maybe empty (f . stringStyle) $ vendorName db vid'
     where vid' = fromIntegral vid
@@ -172,6 +184,34 @@ ppProductName :: IDDB -> Word16 -> Word16 -> (Doc -> Doc) -> Doc
 ppProductName db vid pid f = maybe empty (f . stringStyle) $ productName db vid' pid'
     where vid' = fromIntegral vid
           pid' = fromIntegral pid
+
+ppDevClass :: IDDB -> Word8 -> (Doc -> Doc) -> Doc
+ppDevClass _  0   f = f $ text "defined at interface level"
+ppDevClass db cid f = ppClass db cid f
+
+ppDevSubClass :: IDDB -> Word8 -> Word8 -> (Doc -> Doc) -> Doc
+ppDevSubClass _  0   0    f = f $ text "defined at interface level"
+ppDevSubClass db cid scid f = ppSubClass db cid scid f
+
+ppDevProtocol :: IDDB -> Word8 -> Word8 -> Word8 -> (Doc -> Doc) -> Doc
+ppDevProtocol _  0   0    0      f = f $ text "defined at interface level"
+ppDevProtocol db cid scid protId f = ppProtocol db cid scid protId f
+
+ppClass :: IDDB -> Word8 -> (Doc -> Doc) -> Doc
+ppClass db cid f = maybe empty (f . stringStyle) $ className db cid'
+    where cid' = fromIntegral cid
+
+ppSubClass :: IDDB -> Word8 -> Word8 -> (Doc -> Doc) -> Doc
+ppSubClass db cid scid f = maybe empty (f . stringStyle) $ subClassName db cid' scid'
+    where cid'  = fromIntegral cid
+          scid' = fromIntegral scid
+
+ppProtocol :: IDDB -> Word8 -> Word8 -> Word8 -> (Doc -> Doc) -> Doc
+ppProtocol db cid scid protId f = maybe empty (f . stringStyle)
+                                        $ protocolName db cid' scid' protId'
+    where cid'    = fromIntegral cid
+          scid'   = fromIntegral scid
+          protId' = fromIntegral protId
 
 ppDeviceList :: IDDB -> Bool -> [USBDevice] -> IO Doc
 ppDeviceList db False = liftM vcat . mapM (ppDeviceShort db)
@@ -213,39 +253,52 @@ ppDeviceDescriptor db dev desc = do
         productIx      = deviceProductIx      desc
         serialIx       = deviceSerialNumberIx desc
         numConfigs     = deviceNumConfigs     desc
+        classId        = deviceClass          desc
+        subClassId     = deviceSubClass       desc
+        protocolId     = deviceProtocol       desc
+        vendorId       = deviceIdVendor       desc
+        productId      = deviceIdProduct      desc
 
     configDescriptors <- mapM (getConfigDescriptor dev) [0 .. numConfigs - 1]
 
     manufacturerDoc <- ppStringDescr dev manufacturerIx parens
     productDoc      <- ppStringDescr dev productIx      parens
     serialDoc       <- ppStringDescr dev serialIx       parens
-    configDocs      <- mapM (ppConfigDescriptor dev) configDescriptors
+    configDocs      <- mapM (ppConfigDescriptor db dev) configDescriptors
+
+    let classDoc    = ppDevClass    db classId                       parens
+        subClassDoc = ppDevSubClass db classId subClassId            parens
+        protocolDoc = ppDevProtocol db classId subClassId protocolId parens
 
     return $ columns 2
-      [ "USB specification" .: versionStyle  (deviceUSBSpecReleaseNumber desc)
-      , "Class"             .: numberStyle   (deviceClass          desc)
-      , "Sub class"         .: numberStyle   (deviceSubClass       desc)
-      , "Protocol"          .: numberStyle   (deviceProtocol       desc)
-      , "Max packet size"   .: numberStyle   (deviceMaxPacketSize0 desc)
-      , "Vendor ID"         .: ppVendorId  db (deviceIdVendor desc)
-      , "Product ID"        .: ppProductId db (deviceIdVendor desc) (deviceIdProduct desc)
-      , "Release number"    .: versionStyle  (deviceReleaseNumber  desc)
-      , "Manufacturer"      .: addressStyle manufacturerIx <+> manufacturerDoc
-      , "Product"           .: addressStyle productIx      <+> productDoc
-      , "Serial number"     .: addressStyle serialIx       <+> serialDoc
-      , "Num configs"       .: numberStyle numConfigs
+      [ field "USB specification" [versionStyle (deviceUSBSpecReleaseNumber desc)]
+      , field "Class"             [numberStyle classId, classDoc]
+      , field "Sub class"         [numberStyle subClassId, subClassDoc]
+      , field "Protocol"          [numberStyle protocolId, protocolDoc]
+      , field "Max packet size"   [numberStyle (deviceMaxPacketSize0 desc)]
+      , field "Vendor ID"         [ text "0x" <> ppId vendorId
+                                  , ppVendorName db vendorId parens
+                                  ]
+      , field "Product ID"        [ text "0x" <> ppId productId
+                                  , ppProductName db vendorId productId parens
+                                  ]
+      , field "Release number"    [versionStyle (deviceReleaseNumber  desc)]
+      , field "Manufacturer"      [addressStyle manufacturerIx, manufacturerDoc]
+      , field "Product"           [addressStyle productIx,      productDoc]
+      , field "Serial number"     [addressStyle serialIx,       serialDoc]
+      , field "Num configs"       [numberStyle numConfigs]
       ] <$> vcat ( map (\d -> section "Configuration descriptor"
                               <$> indent 2 d)
                    configDocs
                  )
 
-ppConfigDescriptor :: USBDevice -> USBConfigDescriptor -> IO Doc
-ppConfigDescriptor dev conf = do
+ppConfigDescriptor :: IDDB -> USBDevice -> USBConfigDescriptor -> IO Doc
+ppConfigDescriptor db dev conf = do
   let stringIx = configIx         conf
       ifDescs  = configInterfaces conf
 
   stringDescriptor <- ppStringDescr dev stringIx parens
-  ifDescDocs       <- mapM (mapM $ ppInterfaceDescriptor dev) ifDescs
+  ifDescDocs       <- mapM (mapM $ ppInterfaceDescriptor db dev) ifDescs
 
   let vcatAlternatives = (<$>) (section "Interface")
                        . indent 2
@@ -253,27 +306,33 @@ ppConfigDescriptor dev conf = do
                        . map ((<$>) (section "Alternative") . indent 2)
 
   return $ columns 2
-    [ "Value"          .: numberStyle (configValue conf)
-    , "Descriptor"     .: addressStyle stringIx <+> stringDescriptor
-    , "Attributes"     .: pretty (configAttributes conf)
-    , "Max power"      .: pretty (2 * configMaxPower conf) <+> text "mA"
-    , "Num interfaces" .: numberStyle (configNumInterfaces conf)
+    [ field "Value"          [numberStyle (configValue conf)]
+    , field "Descriptor"     [addressStyle stringIx, stringDescriptor]
+    , field "Attributes"     [pretty (configAttributes conf)]
+    , field "Max power"      [pretty (2 * configMaxPower conf) <+> text "mA"]
+    , field "Num interfaces" [numberStyle (configNumInterfaces conf)]
     ] <$> vcat (map vcatAlternatives ifDescDocs)
 
-ppInterfaceDescriptor :: USBDevice -> USBInterfaceDescriptor -> IO Doc
-ppInterfaceDescriptor dev ifDesc = do
-  let stringIx = interfaceIx ifDesc
+ppInterfaceDescriptor :: IDDB -> USBDevice -> USBInterfaceDescriptor -> IO Doc
+ppInterfaceDescriptor db dev ifDesc = do
+  let stringIx    = interfaceIx       ifDesc
+      classId     = interfaceClass    ifDesc
+      subClassId  = interfaceSubClass ifDesc
+      protocolId  = interfaceProtocol ifDesc
+      classDoc    = ppClass    db classId                       parens
+      subClassDoc = ppSubClass db classId subClassId            parens
+      protocolDoc = ppProtocol db classId subClassId protocolId parens
 
   stringDescriptor <- ppStringDescr dev stringIx parens
 
   return $ columns 2
-    [ "Interface number"    .: numberStyle (interfaceNumber       ifDesc)
-    , "Alternative setting" .: numberStyle (interfaceAltSetting   ifDesc)
-    , "Class"               .: numberStyle (interfaceClass        ifDesc)
-    , "Sub class"           .: numberStyle (interfaceSubClass     ifDesc)
-    , "Protocol"            .: numberStyle (interfaceProtocol     ifDesc)
-    , "Descriptor"          .: addressStyle stringIx <+> stringDescriptor
-    , "Num endpoints"       .: numberStyle (interfaceNumEndpoints ifDesc)
+    [ field "Interface number"    [numberStyle (interfaceNumber       ifDesc)]
+    , field "Alternative setting" [numberStyle (interfaceAltSetting   ifDesc)]
+    , field "Class"               [numberStyle classId, classDoc]
+    , field "Sub class"           [numberStyle subClassId, subClassDoc]
+    , field "Protocol"            [numberStyle protocolId, protocolDoc]
+    , field "Descriptor"          [addressStyle stringIx, stringDescriptor]
+    , field "Num endpoints"       [numberStyle (interfaceNumEndpoints ifDesc)]
     ] <$> vcat ( map (\e -> section "Endpoint" <$> indent 2 (pretty e))
                      $ interfaceEndpoints ifDesc
                )
@@ -285,18 +344,18 @@ instance Pretty BCD4 where
 
 instance Pretty DeviceStatus where
     pretty ds = align
-           $ columns 2 [ "Remote wakeup" .: remoteWakeup ds
-                       , "Self powered"  .: selfPowered  ds
+           $ columns 2 [ field "Remote wakeup" [pretty $ remoteWakeup ds]
+                       , field "Self powered"  [pretty $ selfPowered  ds]
                        ]
 
 instance Pretty USBEndpointDescriptor where
-    pretty ep = columns 2 [ "Address"         .: endpointAddress       ep
-                       , "Attributes"      .: endpointAttributes    ep
-                       , "Max packet size" .: endpointMaxPacketSize ep
-                       , "Interval"        .: numberStyle  (endpointInterval      ep)
-                       , "Refresh"         .: numberStyle  (endpointRefresh       ep)
-                       , "Synch address"   .: addressStyle (endpointSynchAddress  ep)
-                       ]
+    pretty ep = columns 2 [ field "Address"         [pretty $ endpointAddress       ep]
+                          , field "Attributes"      [pretty $ endpointAttributes    ep]
+                          , field "Max packet size" [pretty $ endpointMaxPacketSize ep]
+                          , field "Interval"        [numberStyle  (endpointInterval      ep)]
+                          , field "Refresh"         [numberStyle  (endpointRefresh       ep)]
+                          , field "Synch address"   [addressStyle (endpointSynchAddress  ep)]
+                          ]
 
 instance Pretty EndpointAddress where
     pretty ea = addressStyle (endpointNumber ea)
