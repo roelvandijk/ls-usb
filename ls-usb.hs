@@ -9,6 +9,7 @@ import Control.Monad                  (filterM, foldM, liftM, mapM)
 import Data.ByteString.Char8          (ByteString, unpack)
 import Data.Char                      (toLower)
 import Data.List                      (intersperse, transpose)
+import Data.Maybe                     (catMaybes)
 import Data.Word                      (Word8, Word16)
 import System.Console.GetOpt          ( OptDescr(..)
                                       , ArgDescr(..)
@@ -32,55 +33,104 @@ import Text.Printf                    (PrintfArg, printf)
 -------------------------------------------------------------------------------
 -- Main
 
-data Flag = Verbose | Help deriving Eq
+data Options = Options { optVerbose :: Bool
+                       , optHelp    :: Bool
+                       , optVID     :: Maybe Int
+                       , optPID     :: Maybe Int
+                       , optBus     :: Maybe Int
+                       , optDevAddr :: Maybe Int
+                       }
 
-options :: [OptDescr Flag]
-options = [ Option ['v'] ["verbose"] (NoArg Verbose)
+defaultOptions :: Options
+defaultOptions = Options { optVerbose = False
+                         , optHelp    = False
+                         , optVID     = Nothing
+                         , optPID     = Nothing
+                         , optBus     = Nothing
+                         , optDevAddr = Nothing
+                         }
+
+options :: [OptDescr (Options -> Options)]
+options = [ Option ['v'] ["verbose"]
+                   (NoArg (\o -> o {optVerbose = True}))
                    "Give verbose output"
-          , Option ['h'] ["help"] (NoArg Help)
+
+          , Option ['h'] ["help"]
+                   (NoArg (\o -> o {optHelp = True}))
                    "Shows information regarding the usage of this program"
+
+          , Option [] ["vid"]
+                   (ReqArg (\d o -> o {optVID = Just $ read d}) "VID")
+                   "Only list devices with a specific VID"
+
+          , Option [] ["pid"]
+                   (ReqArg (\d o -> o {optPID = Just $ read d}) "PID")
+                   "Only list devices with a specific PID"
+
+          , Option [] ["bus"]
+                   (ReqArg (\d o -> o {optBus = Just $ read d}) "BUS")
+                   "Only list devices from a specific BUS"
+
+          , Option [] ["address"]
+                   (ReqArg (\d o -> o {optDevAddr = Just $ read d}) "ADDRESS")
+                   "Only list devices with a specific device ADDRESS"
           ]
 
 header :: String
 header = "Usage: ls-usb [OPTION...]"
 
-parseArgs :: IO (Either String [Flag])
+parseArgs :: IO (Either String Options)
 parseArgs = do args <- getArgs
-               return $ case getOpt RequireOrder options args of
-                 (os, _, []) -> Right os
+               return $ case getOpt Permute options args of
+                 (os, _, []) -> Right $ foldl (flip id) defaultOptions os
                  (_,  _, es) -> Left $ concat es ++ usageInfo header options
 
 main :: IO ()
 main = either putStrLn prog =<< parseArgs
     where
-      prog flags = do let help    = Help    `elem` flags
-                          verbose = Verbose `elem` flags
-                      if help
-                        then putStrLn $ usageInfo header options
-                        else do db <- staticDb
-                                ctx <- newUSBCtx
-                                putDoc =<< ppDeviceList db verbose
-                                       =<< filterDeviceList [const $ return True]
-                                       =<< getDeviceList ctx
-                                putStrLn ""
+      prog opts = do if optHelp opts
+                      then putStrLn $ usageInfo header options
+                      else do db <- staticDb
+                              ctx <- newUSBCtx
+                              putDoc =<< ppDeviceList db (optVerbose opts)
+                                     =<< filterDeviceList (filtersFromOpts opts)
+                                     =<< getDeviceList ctx
+                              putStrLn ""
+
+filtersFromOpts :: Options -> [DeviceFilter]
+filtersFromOpts opts = catMaybes [vidF, pidF, busF, devAddrF]
+    where
+      vidF     = fmap (matchVID . fromIntegral) $ optVID     opts
+      pidF     = fmap (matchPID . fromIntegral) $ optPID     opts
+      busF     = fmap matchBus                  $ optBus     opts
+      devAddrF = fmap matchDevAddr              $ optDevAddr opts
 
 -------------------------------------------------------------------------------
 -- Filters
 
-type DeviceFilter = USBDeviceDescriptor -> IO Bool
+type DeviceFilter = USBDevice -> USBDeviceDescriptor -> IO Bool
 
 filterDeviceList :: [DeviceFilter] -> [USBDevice] -> IO [USBDevice]
 filterDeviceList fs devs = foldM filterOnce devs fs
 
 filterOnce :: [USBDevice] -> DeviceFilter -> IO [USBDevice]
-filterOnce devs f = liftM (map fst) . filterM (f . snd) . zip devs
+filterOnce devs f = liftM (map fst) . filterM (uncurry f) . zip devs
                      =<< mapM getDeviceDescriptor devs
 
-filterVID :: VendorID -> DeviceFilter
-filterVID vid desc = return $ vid == deviceIdVendor desc
+filterNothing :: DeviceFilter
+filterNothing _ _ = return True
 
-filterPID :: ProductID -> DeviceFilter
-filterPID pid desc = return $ pid == deviceIdProduct desc
+matchVID :: VendorID -> DeviceFilter
+matchVID vid _ desc = return $ vid == deviceIdVendor desc
+
+matchPID :: ProductID -> DeviceFilter
+matchPID pid _ desc = return $ pid == deviceIdProduct desc
+
+matchBus :: Int -> DeviceFilter
+matchBus bus dev _ = return . (bus ==) =<< getBusNumber dev
+
+matchDevAddr :: Int -> DeviceFilter
+matchDevAddr addr dev _ = return . (addr ==) =<< getDeviceAddress dev
 
 -------------------------------------------------------------------------------
 -- Pretty printing styles
@@ -159,6 +209,9 @@ catchUSBError = catch
 
 -------------------------------------------------------------------------------
 -- Pretty printers for USB types
+
+ppBCD4 :: BCD4 -> Doc
+ppBCD4 (a, b, c, d) = hcat $ punctuate (char '.') $ map pretty [a, b, c, d]
 
 ppStringDescr :: USBDevice -> Ix -> (Doc -> Doc) -> IO Doc
 ppStringDescr _   0  _ = return empty
@@ -271,18 +324,18 @@ ppDeviceDescriptor db dev desc = do
         protocolDoc = ppDevProtocol db classId subClassId protocolId parens
 
     return $ columns 2
-      [ field "USB specification" [versionStyle (deviceUSBSpecReleaseNumber desc)]
+      [ field "USB specification" [versionStyle (ppBCD4 $ deviceUSBSpecReleaseNumber desc)]
       , field "Class"             [numberStyle classId, classDoc]
       , field "Sub class"         [numberStyle subClassId, subClassDoc]
       , field "Protocol"          [numberStyle protocolId, protocolDoc]
       , field "Max packet size"   [numberStyle (deviceMaxPacketSize0 desc)]
-      , field "Vendor ID"         [ text "0x" <> ppId vendorId
+      , field "Vendor ID"         [ numberStyle $ text "0x" <> ppId vendorId
                                   , ppVendorName db vendorId parens
                                   ]
-      , field "Product ID"        [ text "0x" <> ppId productId
+      , field "Product ID"        [ numberStyle $ text "0x" <> ppId productId
                                   , ppProductName db vendorId productId parens
                                   ]
-      , field "Release number"    [versionStyle (deviceReleaseNumber  desc)]
+      , field "Release number"    [versionStyle (ppBCD4 $ deviceReleaseNumber  desc)]
       , field "Manufacturer"      [addressStyle manufacturerIx, manufacturerDoc]
       , field "Product"           [addressStyle productIx,      productDoc]
       , field "Serial number"     [addressStyle serialIx,       serialDoc]
@@ -338,9 +391,6 @@ ppInterfaceDescriptor db dev ifDesc = do
                )
 -------------------------------------------------------------------------------
 -- USB specific instances of Pretty
-
-instance Pretty BCD4 where
-    pretty (a, b, c, d) = hcat $ punctuate (char '.') $ map pretty [a, b, c, d]
 
 instance Pretty DeviceStatus where
     pretty ds = align
