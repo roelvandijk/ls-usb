@@ -88,14 +88,14 @@ parseArgs = do args <- getArgs
 main :: IO ()
 main = either putStrLn prog =<< parseArgs
     where
-      prog opts = do if optHelp opts
-                      then putStrLn $ usageInfo header options
-                      else do db <- staticDb
-                              ctx <- newUSBCtx
-                              putDoc =<< ppDeviceList db (optVerbose opts)
-                                     =<< filterDeviceList (filtersFromOpts opts)
-                                     =<< getDeviceList ctx
-                              putStrLn ""
+      prog opts = if optHelp opts
+                   then putStrLn $ usageInfo header options
+                   else do db <- staticDb
+                           ctx <- newUSBCtx
+                           putDoc =<< ppDeviceList db (optVerbose opts)
+                                  =<< filterDeviceList (filtersFromOpts opts)
+                                  =<< getDeviceList ctx
+                           putStrLn ""
 
 filtersFromOpts :: Options -> [DeviceFilter]
 filtersFromOpts opts = catMaybes [vidF, pidF, busF, devAddrF]
@@ -156,7 +156,7 @@ addressStyle = magenta . pretty
 -------------------------------------------------------------------------------
 
 field :: String -> [Doc] -> [Doc]
-field name xs = ((fieldStyle $ text $ name) <> char ':') : xs
+field name xs = (fieldStyle (text name) <> char ':') : xs
 
 section :: String -> Doc
 section = sectionStyle . text
@@ -178,8 +178,7 @@ instance Pretty Word16 where
 
 columns :: Int -> [[Doc]] -> Doc
 columns s rows = vcat $ map ( hcat
-                            . map (uncurry fill)
-                            . zip (map (+s) $ columnSizes rows)
+                            . zipWith fill (map (+s) $ columnSizes rows)
                             )
                             rows
 
@@ -211,7 +210,7 @@ catchUSBError = catch
 -- Pretty printers for USB types
 
 ppBCD4 :: BCD4 -> Doc
-ppBCD4 (a, b, c, d) = hcat $ punctuate (char '.') $ map pretty [a, b, c, d]
+ppBCD4 (a, b, c, d) = hcat . punctuate (char '.') $ map pretty [a, b, c, d]
 
 ppStringDescr :: USBDevice -> Ix -> (Doc -> Doc) -> IO Doc
 ppStringDescr _   0  _ = return empty
@@ -223,7 +222,7 @@ ppStringDescr dev ix f = catchUSBError
                                                                 stringBufferSize
                            )
                            (return . ppErr)
-    where ppErr e = f $ dullred $ text "Couldn't retrieve string descriptor:"
+    where ppErr e = f . dullred $ text "Couldn't retrieve string descriptor:"
                                   <+> red (text $ show e)
 
 ppId :: PrintfArg n => n -> Doc
@@ -418,7 +417,7 @@ instance Pretty TransferDirection where
 
 instance Pretty EndpointSynchronization where
     pretty NoSynchronization = text "no synchronization"
-    pretty es                = text $ map toLower $ show es
+    pretty es                = text . map toLower $ show es
 
 instance Pretty EndpointUsage where
     pretty = text . map toLower . show
@@ -438,4 +437,4 @@ instance Pretty EndpointTransferType where
     pretty (Isochronous s u) = text "isochronous"
                                <+> char '-' <+> text "synch:" <+> pretty s
                                <+> char '-' <+> text "usage:" <+> pretty u
-    pretty tt                = text $ map toLower $ show tt
+    pretty tt                = text . map toLower $ show tt
