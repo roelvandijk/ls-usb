@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Monad                  ( filterM, fmap, foldM, mapM )
+import Control.Monad                  ( (>=>), filterM, liftM2 )
 import PrettyDevList                  ( ppDeviceList )
 import System.Console.CmdArgs
 import System.USB
@@ -34,36 +34,60 @@ main = do opts <- cmdArgs "ls-usb 0.1, (C) Roel van Dijk 2009" [defaultOpts]
           db <- staticDb
           ctx <- newUSBCtx
           putDoc =<< ppDeviceList db verbose
-                 =<< filterDeviceList (filtersFromOpts opts)
+                 =<< filterM (filterFromOpts opts)
                  =<< getDeviceList ctx
           putStrLn ""
 
-filtersFromOpts :: Options -> [DeviceFilter]
-filtersFromOpts opts = concat [ fmap (matchVID . fromIntegral) $ vid     opts
-                              , fmap (matchPID . fromIntegral) $ pid     opts
-                              , fmap matchBus                  $ bus     opts
-                              , fmap matchDevAddr              $ address opts
-                              ]
+filterFromOpts :: Options -> F IO USBDevice
+filterFromOpts opts = andF $ map (filterNonEmpty . ($ opts))
+                             [ map (descToDevFilter . matchVID . fromIntegral) . vid
+                             , map (descToDevFilter . matchPID . fromIntegral) . pid
+                             , map matchBus     . bus
+                             , map matchDevAddr . address
+                             ]
+
 -------------------------------------------------------------------------------
 -- Filters
 
-type DeviceFilter = USBDevice -> USBDeviceDescriptor -> IO Bool
+type F m a = a -> m Bool
 
-filterDeviceList :: [DeviceFilter] -> [USBDevice] -> IO [USBDevice]
-filterDeviceList fs devs = foldM applyFilter devs fs
+-- Construct a filter combinator from a binary boolean operator.
+boolBinOpToFComb :: Monad m => (Bool -> Bool -> Bool) -> F m a -> F m a -> F m a
+boolBinOpToFComb op f g = \x -> liftM2 op (f x) (g x)
 
-applyFilter :: [USBDevice] -> DeviceFilter -> IO [USBDevice]
-applyFilter devs f = fmap (map fst) . filterM (uncurry f) . zip devs
-                     =<< mapM getDeviceDescriptor devs
+(<||>) :: Monad m => F m a -> F m a -> F m a
+(<||>) = boolBinOpToFComb (||)
 
-matchVID :: VendorID -> DeviceFilter
-matchVID vid' _ desc = return $ vid' == deviceIdVendor desc
+(<&&>) :: Monad m => F m a -> F m a -> F m a
+(<&&>) = boolBinOpToFComb (&&)
 
-matchPID :: ProductID -> DeviceFilter
-matchPID pid' _ desc = return $ pid' == deviceIdProduct desc
+constF :: Monad m => Bool -> F m a
+constF = const . return
 
-matchBus :: Int -> DeviceFilter
-matchBus bus' dev _ = return . (bus' ==) =<< getBusNumber dev
+andF :: Monad m => [F m a] -> F m a
+andF = foldr (<&&>) (constF True)
 
-matchDevAddr :: Int -> DeviceFilter
-matchDevAddr address' dev _ = return . (address' ==) =<< getDeviceAddress dev
+orF :: Monad m => [F m a] -> F m a
+orF = foldr (<||>) (constF False)
+
+filterNonEmpty :: Monad m => [F m a] -> F m a
+filterNonEmpty [] = constF True
+filterNonEmpty xs = foldr (<||>) (constF False) xs
+
+-------------------------------------------------------------------------------
+-- Specific USBDevice filters
+
+descToDevFilter :: F IO USBDeviceDescriptor -> F IO USBDevice
+descToDevFilter = (getDeviceDescriptor >=>)
+
+matchVID :: VendorID -> F IO USBDeviceDescriptor
+matchVID vid' desc = return $ vid' == deviceIdVendor desc
+
+matchPID :: ProductID -> F IO USBDeviceDescriptor
+matchPID pid' desc = return $ pid' == deviceIdProduct desc
+
+matchBus :: Int -> F IO USBDevice
+matchBus bus' dev = return . (bus' ==) =<< getBusNumber dev
+
+matchDevAddr :: Int -> F IO USBDevice
+matchDevAddr address' dev = return . (address' ==) =<< getDeviceAddress dev
