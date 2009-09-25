@@ -5,25 +5,36 @@ module Main where
 import Control.Monad                  ( (>=>), filterM, liftM2 )
 import PrettyDevList                  ( ppDeviceList )
 import System.Console.CmdArgs
+import System.IO                      ( stdout )
 import System.USB
 import System.USB.IDDB.LinuxUsbIdRepo ( staticDb )
-import Text.PrettyPrint.ANSI.Leijen   ( putDoc )
+import Text.PrettyPrint.ANSI.Leijen   ( Doc, SimpleDoc(..)
+                                      , displayIO
+                                      , putDoc, renderPretty
+                                      )
 
 -------------------------------------------------------------------------------
 -- Main
 
-data Options = Options { vid     :: [Int]
-                       , pid     :: [Int]
-                       , bus     :: [Int]
-                       , address :: [Int]
+data Options = Options { vid      :: [Int]
+                       , pid      :: [Int]
+                       , bus      :: [Int]
+                       , address  :: [Int]
+                       , nocolour :: Bool
                        } deriving (Show, Data, Typeable)
 
 defaultOpts :: Mode Options
 defaultOpts = mode Options
-  { vid     = def &= typ "VID"  & text "List devices with this VID"
-  , pid     = def &= typ "PID"  & text "List devices with this PID"
-  , bus     = def &= typ "BUS"  & text "List devices on this BUS"
-  , address = def &= typ "ADDR" & text "List devices with this ADDRESS"
+  { vid      = def &= explicit & flag "vid" & typ "VID"
+             & text "List devices with this VID"
+  , pid      = def &= explicit & flag "pid" & typ "PID"
+             & text "List devices with this PID"
+  , bus      = def &= explicit & flag "b" & flag "bus" & typ "BUS"
+             & text "List devices on this BUS"
+  , address  = def &= explicit & flag "a" & flag "address" & typ "ADDR"
+             & text "List devices with this ADDRESS"
+  , nocolour = def &= explicit & flag "nc" & flag "nocolour" & flag "nocolor"
+             & text "Don't colour the output"
   } &= prog "ls-usb"
     & text "Lists connected USB devices"
     & helpSuffix ["Please ensure you have sufficient rights before running with higher verbosity"]
@@ -32,13 +43,14 @@ main :: IO ()
 main = do opts <- cmdArgs "ls-usb 0.1, (C) Roel van Dijk 2009" [defaultOpts]
           verbose <- isLoud
           db <- staticDb
-          ctx <- newUSBCtx
-          putDoc =<< ppDeviceList db verbose
-                 =<< filterM (filterFromOpts opts)
-                 =<< getDeviceList ctx
+          ctx <- newCtx
+          printDoc (not $ nocolour opts)
+              =<< ppDeviceList db verbose
+              =<< filterM (filterFromOpts opts)
+              =<< getDevices ctx
           putStrLn ""
 
-filterFromOpts :: Options -> F IO USBDevice
+filterFromOpts :: Options -> F IO Device
 filterFromOpts opts = andF $ map (filterNonEmpty . ($ opts))
                              [ map (descToDevFilter . matchVID . fromIntegral) . vid
                              , map (descToDevFilter . matchPID . fromIntegral) . pid
@@ -75,19 +87,35 @@ filterNonEmpty [] = constF True
 filterNonEmpty xs = foldr (<||>) (constF False) xs
 
 -------------------------------------------------------------------------------
--- Specific USBDevice filters
+-- Specific Device filters
 
-descToDevFilter :: F IO USBDeviceDescriptor -> F IO USBDevice
+descToDevFilter :: F IO DeviceDescriptor -> F IO Device
 descToDevFilter = (getDeviceDescriptor >=>)
 
-matchVID :: VendorID -> F IO USBDeviceDescriptor
+matchVID :: VendorID -> F IO DeviceDescriptor
 matchVID vid' desc = return $ vid' == deviceIdVendor desc
 
-matchPID :: ProductID -> F IO USBDeviceDescriptor
+matchPID :: ProductID -> F IO DeviceDescriptor
 matchPID pid' desc = return $ pid' == deviceIdProduct desc
 
-matchBus :: Int -> F IO USBDevice
+matchBus :: Int -> F IO Device
 matchBus bus' dev = return . (bus' ==) =<< getBusNumber dev
 
-matchDevAddr :: Int -> F IO USBDevice
+matchDevAddr :: Int -> F IO Device
 matchDevAddr address' dev = return . (address' ==) =<< getDeviceAddress dev
+
+-------------------------------------------------------------------------------
+-- Pretty printer utilities
+
+printDoc :: Bool -> Doc -> IO ()
+printDoc colour doc | colour    = putDoc doc
+                    | otherwise = displayIO stdout
+                                  . stripColours
+                                  $ renderPretty 0.4 100 doc
+    where
+      stripColours :: SimpleDoc -> SimpleDoc
+      stripColours e@(SEmpty)    = e
+      stripColours (SChar   c d) = SChar c   $ stripColours d
+      stripColours (SText l s d) = SText l s $ stripColours d
+      stripColours (SLine l   d) = SLine l   $ stripColours d
+      stripColours (SSGR _    d) = stripColours d

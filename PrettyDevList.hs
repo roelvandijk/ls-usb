@@ -90,8 +90,8 @@ docLen = sdocLen . renderPretty 0.4 100
 stringBufferSize :: Int
 stringBufferSize = 512
 
-catchUSBError :: IO a -> (USBError -> IO a) -> IO a
-catchUSBError = catch
+catchUSBException :: IO a -> (USBException -> IO a) -> IO a
+catchUSBException = catch
 
 -------------------------------------------------------------------------------
 -- Pretty printers for USB types
@@ -99,10 +99,10 @@ catchUSBError = catch
 ppBCD4 :: BCD4 -> Doc
 ppBCD4 (a, b, c, d) = hcat . punctuate (char '.') $ map pretty [a, b, c, d]
 
-ppStringDescr :: USBDevice -> Ix -> (Doc -> Doc) -> IO Doc
+ppStringDescr :: Device -> Ix -> (Doc -> Doc) -> IO Doc
 ppStringDescr _   0  _ = return empty
-ppStringDescr dev ix f = catchUSBError
-                           ( withUSBDeviceHandle dev $ \devH ->
+ppStringDescr dev ix f = catchUSBException
+                           ( withDeviceHandle dev $ \devH ->
                                liftM (f . green . pretty)
                                      $ getStringDescriptorAscii devH
                                                                 ix
@@ -152,12 +152,12 @@ ppProtocol db cid scid protId f = maybe empty (f . stringStyle)
           scid'   = fromIntegral scid
           protId' = fromIntegral protId
 
-ppDeviceList :: IDDB -> Bool -> [USBDevice] -> IO Doc
+ppDeviceList :: IDDB -> Bool -> [Device] -> IO Doc
 ppDeviceList db False = liftM vcat . mapM (ppDeviceShort db)
 ppDeviceList db True  = liftM (vcat . intersperse (char ' '))
                       . mapM (ppDevice db)
 
-ppDeviceShort :: IDDB -> USBDevice -> IO Doc
+ppDeviceShort :: IDDB -> Device -> IO Doc
 ppDeviceShort db dev = do
     busNum  <- getBusNumber        dev
     devAddr <- getDeviceAddress    dev
@@ -177,7 +177,7 @@ ppDeviceShort db dev = do
              <>  numberStyle (ppId pid)
              <+> ppVendorName db vid (<+> ppProductName db vid pid (char '-' <+>))
 
-ppDevice :: IDDB -> USBDevice -> IO Doc
+ppDevice :: IDDB -> Device -> IO Doc
 ppDevice db dev = do shortDesc <- ppDeviceShort db dev
                      desc      <- getDeviceDescriptor dev
                      descDoc   <- ppDeviceDescriptor db dev desc
@@ -186,7 +186,7 @@ ppDevice db dev = do shortDesc <- ppDeviceShort db dev
                               <$> section "Device descriptor"
                               <$> indent 2 descDoc
 
-ppDeviceDescriptor :: IDDB -> USBDevice -> USBDeviceDescriptor -> IO Doc
+ppDeviceDescriptor :: IDDB -> Device -> DeviceDescriptor -> IO Doc
 ppDeviceDescriptor db dev desc = do
     let manufacturerIx = deviceManufacturerIx desc
         productIx      = deviceProductIx      desc
@@ -198,7 +198,8 @@ ppDeviceDescriptor db dev desc = do
         vendorId       = deviceIdVendor       desc
         productId      = deviceIdProduct      desc
 
-    configDescriptors <- mapM (getConfigDescriptor dev) [0 .. numConfigs - 1]
+    configDescriptors <- mapM (getConfigDescriptor dev)
+                              [0 .. fromIntegral numConfigs - 1]
 
     manufacturerDoc <- ppStringDescr dev manufacturerIx parens
     productDoc      <- ppStringDescr dev productIx      parens
@@ -231,7 +232,7 @@ ppDeviceDescriptor db dev desc = do
                    configDocs
                  )
 
-ppConfigDescriptor :: IDDB -> USBDevice -> USBConfigDescriptor -> IO Doc
+ppConfigDescriptor :: IDDB -> Device -> ConfigDescriptor -> IO Doc
 ppConfigDescriptor db dev conf = do
   let stringIx = configIx         conf
       ifDescs  = configInterfaces conf
@@ -252,7 +253,7 @@ ppConfigDescriptor db dev conf = do
     , field "Num interfaces" [numberStyle (configNumInterfaces conf)]
     ] <$> vcat (map vcatAlternatives ifDescDocs)
 
-ppInterfaceDescriptor :: IDDB -> USBDevice -> USBInterfaceDescriptor -> IO Doc
+ppInterfaceDescriptor :: IDDB -> Device -> InterfaceDescriptor -> IO Doc
 ppInterfaceDescriptor db dev ifDesc = do
   let stringIx    = interfaceIx       ifDesc
       classId     = interfaceClass    ifDesc
@@ -284,7 +285,7 @@ instance Pretty DeviceStatus where
                        , field "Self powered"  [pretty $ selfPowered  ds]
                        ]
 
-instance Pretty USBEndpointDescriptor where
+instance Pretty EndpointDescriptor where
     pretty ep = columns 2 [ field "Address"         [pretty $ endpointAddress       ep]
                           , field "Attributes"      [pretty $ endpointAttributes    ep]
                           , field "Max packet size" [pretty $ endpointMaxPacketSize ep]
@@ -315,10 +316,9 @@ instance Pretty EndpointMaxPacketSize where
                  <+> pretty (transactionOpportunities mps)
 
 instance Pretty EndpointTransactionOpportunities where
-    pretty NoAdditionalTransactions         = text "no additional transactions"
-    pretty OneAdditionlTransaction          = text "one additional transaction"
-    pretty TwoAdditionalTransactions        = text "two additional transactions"
-    pretty ReservedTransactionOpportunities = text "reserved transactional opportunities"
+    pretty NoAdditionalTransactions  = text "no additional transactions"
+    pretty OneAdditionlTransaction   = text "one additional transaction"
+    pretty TwoAdditionalTransactions = text "two additional transactions"
 
 instance Pretty EndpointTransferType where
     pretty (Isochronous s u) = text "isochronous"
