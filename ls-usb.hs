@@ -21,6 +21,7 @@ data Options = Options { vid      :: [Int]
                        , bus      :: [Int]
                        , address  :: [Int]
                        , nocolour :: Bool
+                       , darker   :: Bool
                        } deriving (Show, Data, Typeable)
 
 defaultOpts :: Mode Options
@@ -35,6 +36,8 @@ defaultOpts = mode Options
              & text "List devices with this ADDRESS"
   , nocolour = def &= explicit & flag "nc" & flag "nocolour" & flag "nocolor"
              & text "Don't colour the output"
+  , darker   = def &= explicit & flag "dark"
+             & text "Use darker colours (for bright backgrounds)"
   } &= prog "ls-usb"
     & text "Lists connected USB devices"
     & helpSuffix ["Please ensure you have sufficient rights before running with higher verbosity"]
@@ -93,16 +96,22 @@ descToDevFilter :: F IO DeviceDescriptor -> F IO Device
 descToDevFilter = (getDeviceDescriptor >=>)
 
 matchVID :: VendorID -> F IO DeviceDescriptor
-matchVID vid' desc = return $ vid' == deviceIdVendor desc
+matchVID vid' desc = return $ vid' == deviceVendorId desc
 
 matchPID :: ProductID -> F IO DeviceDescriptor
-matchPID pid' desc = return $ pid' == deviceIdProduct desc
+matchPID pid' desc = return $ pid' == deviceProductId desc
 
 matchBus :: Int -> F IO Device
-matchBus bus' dev = return . (bus' ==) =<< getBusNumber dev
+matchBus bus' dev = return
+                  . (bus' ==)
+                  . fromIntegral
+                  =<< getBusNumber dev
 
 matchDevAddr :: Int -> F IO Device
-matchDevAddr address' dev = return . (address' ==) =<< getDeviceAddress dev
+matchDevAddr address' dev = return
+                          . (address' ==)
+                          . fromIntegral
+                          =<< getDeviceAddress dev
 
 -------------------------------------------------------------------------------
 -- Pretty printer utilities
