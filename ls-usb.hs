@@ -3,7 +3,9 @@
 module Main where
 
 import Control.Monad                  ( (>=>), filterM, liftM2 )
-import PrettyDevList                  ( ppDeviceList )
+import PrettyDevList                  ( ppDeviceList
+                                      , brightStyle, darkStyle
+                                      )
 import System.Console.CmdArgs
 import System.IO                      ( stdout )
 import System.USB
@@ -47,8 +49,10 @@ main = do opts <- cmdArgs "ls-usb 0.1, (C) Roel van Dijk 2009" [defaultOpts]
           verbose <- isLoud
           db <- staticDb
           ctx <- newCtx
+          let style | darker opts = darkStyle
+                    | otherwise   = brightStyle
           printDoc (not $ nocolour opts)
-              =<< ppDeviceList db verbose
+              =<< ppDeviceList style db verbose
               =<< filterM (filterFromOpts opts)
               =<< getDevices ctx
           putStrLn ""
@@ -95,10 +99,10 @@ filterNonEmpty xs = foldr (<||>) (constF False) xs
 descToDevFilter :: F IO DeviceDescriptor -> F IO Device
 descToDevFilter = (getDeviceDescriptor >=>)
 
-matchVID :: VendorID -> F IO DeviceDescriptor
+matchVID :: VendorId -> F IO DeviceDescriptor
 matchVID vid' desc = return $ vid' == deviceVendorId desc
 
-matchPID :: ProductID -> F IO DeviceDescriptor
+matchPID :: ProductId -> F IO DeviceDescriptor
 matchPID pid' desc = return $ pid' == deviceProductId desc
 
 matchBus :: Int -> F IO Device

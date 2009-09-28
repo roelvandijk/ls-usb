@@ -1,7 +1,14 @@
-module PrettyDevList (ppDeviceList) where
+{-# LANGUAGE RankNTypes #-}
+
+module PrettyDevList
+    ( PPStyle(..)
+    , brightStyle, darkStyle
+    , ppDeviceList
+    ) where
 
 import Prelude hiding ( catch )
 
+import Control.Arrow                  ( (>>>) )
 import Control.Exception              ( catch )
 import Control.Monad                  ( liftM, mapM )
 import Data.ByteString.Char8          ( ByteString, unpack )
@@ -22,40 +29,51 @@ import Text.Printf                    ( PrintfArg, printf )
 -------------------------------------------------------------------------------
 -- Pretty printing styles
 
-sectionStyle :: Pretty a => a -> Doc
-sectionStyle = underline . bold . pretty
+data PPStyle = PPStyle
+    { sectionStyle   :: forall a. Pretty a => a -> Doc
+    , fieldStyle     :: forall a. Pretty a => a -> Doc
+    , usbNumStyle    :: forall a. Pretty a => a -> Doc
+    , usbStrStyle    :: forall a. Pretty a => a -> Doc
+    , stringStyle    :: forall a. Pretty a => a -> Doc
+    , descrStyle     :: forall a. Pretty a => a -> Doc
+    , descrAddrStyle :: forall a. Pretty a => a -> Doc
+    , versionStyle   :: forall a. Pretty a => a -> Doc
+    , addrStyle      :: forall a. Pretty a => a -> Doc
+    }
 
-fieldStyle :: Pretty a => a -> Doc
-fieldStyle = pretty
+brightStyle :: PPStyle
+brightStyle = PPStyle
+    { sectionStyle   = pretty >>> white >>> bold >>> underline
+    , fieldStyle     = pretty >>> white
+    , usbNumStyle    = pretty >>> yellow
+    , usbStrStyle    = pretty
+    , stringStyle    = pretty >>> green
+    , descrStyle     = pretty >>> cyan >>> dquotes
+    , descrAddrStyle = pretty >>> cyan >>> bold
+    , versionStyle   = pretty >>> yellow
+    , addrStyle      = pretty >>> magenta
+    }
 
-usbNumVal :: Pretty a => a -> Doc
-usbNumVal = yellow . pretty
-
-usbStrVal :: Pretty a => a -> Doc
-usbStrVal = pretty
-
-stringStyle :: Pretty a => a -> Doc
-stringStyle = green . pretty
-
-descriptorStyle :: Pretty a => a -> Doc
-descriptorStyle = dquotes . cyan . pretty
-
-descrAddrStyle :: Pretty a => a -> Doc
-descrAddrStyle = bold . cyan . pretty
-
-versionStyle :: Pretty a => a -> Doc
-versionStyle = yellow . pretty
-
-addressStyle :: Pretty a => a -> Doc
-addressStyle = magenta . pretty
+darkStyle :: PPStyle
+darkStyle = PPStyle
+    { sectionStyle   = pretty >>> black >>> bold >>> underline
+    , fieldStyle     = pretty >>> black
+    , usbNumStyle    = pretty >>> dullyellow
+    , usbStrStyle    = pretty
+    , stringStyle    = pretty >>> dullgreen
+    , descrStyle     = pretty >>> dullcyan >>> dquotes
+    , descrAddrStyle = pretty >>> dullcyan
+    , versionStyle   = pretty >>> dullyellow
+    , addrStyle      = pretty >>> dullmagenta
+    }
 
 -------------------------------------------------------------------------------
 
-field :: String -> [Doc] -> [Doc]
-field name xs = (fieldStyle (text name) <> char ':') : xs
+field :: PPStyle -> String -> [Doc] -> [Doc]
+field style name xs = (fieldStyle style $ (text name) <> char ':') : xs
 
-section :: String -> Doc
-section = sectionStyle . text
+section :: PPStyle -> String -> Doc
+section style = sectionStyle style . text
 
 -------------------------------------------------------------------------------
 -- Some basic instances of the Pretty class
@@ -111,68 +129,70 @@ unknown = text "unknown"
 ppBCD4 :: BCD4 -> Doc
 ppBCD4 (a, b, c, d) = hcat . punctuate (char '.') $ map pretty [a, b, c, d]
 
-ppStringDescr :: Device -> StrIx -> IO Doc
-ppStringDescr _   0  = return empty
-ppStringDescr dev ix = catchUSBException
-                           ( withDeviceHandle dev $ \devH ->
-                               liftM descriptorStyle
-                                     $ getStringDescriptorAscii devH
-                                                                ix
-                                                                stringBufferSize
-                           )
-                           (return . ppErr)
+ppStringDescr :: PPStyle -> Device -> StrIx -> IO Doc
+ppStringDescr _     _   0  = return empty
+ppStringDescr style dev ix = catchUSBException
+    ( withDeviceHandle dev $ \devH ->
+        liftM (descrStyle style)
+              $ getStringDescriptorAscii devH
+                                         ix
+                                         stringBufferSize
+    )
+    (return . ppErr)
     where ppErr e = dquotes . dullred $ text "Couldn't retrieve string descriptor:"
                                         <+> red (text $ show e)
 
 ppId :: PrintfArg n => n -> Doc
 ppId x = text (printf "%04x" x :: String)
 
-ppVendorName :: IDDB -> Word16 -> (Doc -> Doc) -> Doc
-ppVendorName db vid f = maybe unknown (f . stringStyle) $ vendorName db vid'
+ppVendorName :: PPStyle -> IDDB -> Word16 -> (Doc -> Doc) -> Doc
+ppVendorName style db vid f = maybe unknown (f . stringStyle style)
+                              $ vendorName db vid'
     where vid' = fromIntegral vid
 
-ppProductName :: IDDB -> Word16 -> Word16 -> (Doc -> Doc) -> Doc
-ppProductName db vid pid f = maybe unknown (f . stringStyle)
-                           $ productName db vid' pid'
+ppProductName :: PPStyle -> IDDB -> Word16 -> Word16 -> (Doc -> Doc) -> Doc
+ppProductName style db vid pid f = maybe unknown (f . stringStyle style)
+                                   $ productName db vid' pid'
     where vid' = fromIntegral vid
           pid' = fromIntegral pid
 
-ppDevClass :: IDDB -> Word8 -> Doc
-ppDevClass _  0   = text "defined at interface level"
-ppDevClass db cid = ppClass db cid
+ppDevClass :: PPStyle -> IDDB -> Word8 -> Doc
+ppDevClass _     _  0   = text "defined at interface level"
+ppDevClass style db cid = ppClass style db cid
 
-ppDevSubClass :: IDDB -> Word8 -> Word8 -> Doc
-ppDevSubClass _  0   0    = text "defined at interface level"
-ppDevSubClass db cid scid = ppSubClass db cid scid
+ppDevSubClass :: PPStyle -> IDDB -> Word8 -> Word8 -> Doc
+ppDevSubClass _     _  0   0    = text "defined at interface level"
+ppDevSubClass style db cid scid = ppSubClass style db cid scid
 
-ppDevProtocol :: IDDB -> Word8 -> Word8 -> Word8 -> Doc
-ppDevProtocol _  0   0    0      = text "defined at interface level"
-ppDevProtocol db cid scid protId = ppProtocol db cid scid protId
+ppDevProtocol :: PPStyle -> IDDB -> Word8 -> Word8 -> Word8 -> Doc
+ppDevProtocol _     _  0   0    0      = text "defined at interface level"
+ppDevProtocol style db cid scid protId = ppProtocol style db cid scid protId
 
-ppClass :: IDDB -> Word8 -> Doc
-ppClass db cid = maybe unknown stringStyle $ className db cid'
+ppClass :: PPStyle -> IDDB -> Word8 -> Doc
+ppClass style db cid = maybe unknown (stringStyle style)
+                       $ className db cid'
     where cid' = fromIntegral cid
 
-ppSubClass :: IDDB -> Word8 -> Word8 -> Doc
-ppSubClass db cid scid = maybe unknown stringStyle
-                       $ subClassName db cid' scid'
+ppSubClass :: PPStyle -> IDDB -> Word8 -> Word8 -> Doc
+ppSubClass style db cid scid = maybe unknown (stringStyle style)
+                               $ subClassName db cid' scid'
     where cid'  = fromIntegral cid
           scid' = fromIntegral scid
 
-ppProtocol :: IDDB -> Word8 -> Word8 -> Word8 -> Doc
-ppProtocol db cid scid protId = maybe unknown stringStyle
-                              $ protocolName db cid' scid' protId'
+ppProtocol :: PPStyle -> IDDB -> Word8 -> Word8 -> Word8 -> Doc
+ppProtocol style db cid scid protId = maybe unknown (stringStyle style)
+                                      $ protocolName db cid' scid' protId'
     where cid'    = fromIntegral cid
           scid'   = fromIntegral scid
           protId' = fromIntegral protId
 
-ppDeviceList :: IDDB -> Bool -> [Device] -> IO Doc
-ppDeviceList db False = liftM vcat . mapM (ppDeviceShort db)
-ppDeviceList db True  = liftM (vcat . intersperse (char ' '))
-                      . mapM (ppDevice db)
+ppDeviceList :: PPStyle -> IDDB -> Bool -> [Device] -> IO Doc
+ppDeviceList style db False = liftM vcat . mapM (ppDeviceShort style db)
+ppDeviceList style db True  = liftM (vcat . intersperse (char ' '))
+                              . mapM (ppDevice style db)
 
-ppDeviceShort :: IDDB -> Device -> IO Doc
-ppDeviceShort db dev = do
+ppDeviceShort :: PPStyle -> IDDB -> Device -> IO Doc
+ppDeviceShort style db dev = do
     busNum  <- getBusNumber        dev
     devAddr <- getDeviceAddress    dev
     desc    <- getDeviceDescriptor dev
@@ -181,162 +201,190 @@ ppDeviceShort db dev = do
         pid = deviceProductId desc
 
     return $ text "Bus"
-             <+> addressStyle (printf "%03d" busNum :: String)
+             <+> (addrStyle style) (printf "%03d" busNum :: String)
              <+> text "Device"
-             <+> addressStyle (printf "%03d" devAddr :: String)
+             <+> (addrStyle style) (printf "%03d" devAddr :: String)
              <>  char ':'
              <+> text "ID"
-             <+> usbNumVal (ppId vid)
+             <+> (usbNumStyle style) (ppId vid)
              <>  char ':'
-             <>  usbNumVal (ppId pid)
-             <+> ppVendorName db vid (<+> ppProductName db vid pid (char '-' <+>))
+             <>  (usbNumStyle style) (ppId pid)
+             <+> ppVendorName style db vid
+                 (<+> ppProductName style db vid pid (char '-' <+>))
 
-ppDevice :: IDDB -> Device -> IO Doc
-ppDevice db dev = do shortDesc <- ppDeviceShort db dev
-                     desc      <- getDeviceDescriptor dev
-                     descDoc   <- ppDeviceDescriptor db dev desc
+ppDevice :: PPStyle -> IDDB -> Device -> IO Doc
+ppDevice style db dev = do
+  shortDesc <- ppDeviceShort style db dev
+  desc      <- getDeviceDescriptor dev
+  descDoc   <- ppDeviceDescriptor style db dev desc
 
-                     return $ shortDesc
-                              <$> section "Device descriptor"
-                              <$> indent 2 descDoc
+  return $  shortDesc
+        <$> section style "Device descriptor"
+        <$> indent 2 descDoc
 
-ppDeviceDescriptor :: IDDB -> Device -> DeviceDescriptor -> IO Doc
-ppDeviceDescriptor db dev desc = do
-    let manufacturerIx = deviceManufacturerStrIx desc
-        productIx      = deviceProductStrIx      desc
-        serialIx       = deviceSerialNumberStrIx desc
-        numConfigs     = deviceNumConfigs        desc
-        classId        = deviceClass             desc
-        subClassId     = deviceSubClass          desc
-        protocolId     = deviceProtocol          desc
-        vendorId       = deviceVendorId          desc
-        productId      = deviceProductId         desc
+ppDeviceDescriptor :: PPStyle -> IDDB -> Device -> DeviceDescriptor -> IO Doc
+ppDeviceDescriptor style db dev desc = do
+    let field'          = field          style
+        usbNumStyle' :: forall a. Pretty a => a -> Doc
+        usbNumStyle'    = usbNumStyle    style
+        versionStyle'   = versionStyle   style
+        descrAddrStyle' = descrAddrStyle style
+        manufacturerIx  = deviceManufacturerStrIx desc
+        productIx       = deviceProductStrIx      desc
+        serialIx        = deviceSerialNumberStrIx desc
+        numConfigs      = deviceNumConfigs        desc
+        classId         = deviceClass             desc
+        subClassId      = deviceSubClass          desc
+        protocolId      = deviceProtocol          desc
+        vendorId        = deviceVendorId          desc
+        productId       = deviceProductId         desc
 
     configDescriptors <- mapM (getConfigDescriptor dev)
                               [0 .. fromIntegral numConfigs - 1]
 
-    manufacturerDoc <- ppStringDescr dev manufacturerIx
-    productDoc      <- ppStringDescr dev productIx
-    serialDoc       <- ppStringDescr dev serialIx
-    configDocs      <- mapM (ppConfigDescriptor db dev) configDescriptors
+    manufacturerDoc <- ppStringDescr style dev manufacturerIx
+    productDoc      <- ppStringDescr style dev productIx
+    serialDoc       <- ppStringDescr style dev serialIx
+    configDocs      <- mapM (ppConfigDescriptor style db dev)
+                            configDescriptors
 
-    let classDoc    = ppDevClass    db classId
-        subClassDoc = ppDevSubClass db classId subClassId
-        protocolDoc = ppDevProtocol db classId subClassId protocolId
+    let classDoc    = ppDevClass    style db classId
+        subClassDoc = ppDevSubClass style db classId subClassId
+        protocolDoc = ppDevProtocol style db classId subClassId protocolId
 
     return $ columns 2
-      [ field "USB specification" [versionStyle (ppBCD4 $ deviceUSBSpecReleaseNumber desc)]
-      , field "Class"             [usbNumVal classId, classDoc]
-      , field "Sub class"         [usbNumVal subClassId, subClassDoc]
-      , field "Protocol"          [usbNumVal protocolId, protocolDoc]
-      , field "Max packet size"   [usbNumVal (deviceMaxPacketSize0 desc)]
-      , field "Vendor ID"         [ usbNumVal $ text "0x" <> ppId vendorId
-                                  , ppVendorName db vendorId id
-                                  ]
-      , field "Product ID"        [ usbNumVal $ text "0x" <> ppId productId
-                                  , ppProductName db vendorId productId id
-                                  ]
-      , field "Release number"    [versionStyle (ppBCD4 $ deviceReleaseNumber  desc)]
-      , field "Manufacturer"      [descrAddrStyle manufacturerIx, manufacturerDoc]
-      , field "Product"           [descrAddrStyle productIx,      productDoc]
-      , field "Serial number"     [descrAddrStyle serialIx,       serialDoc]
-      , field "Num configs"       [usbNumVal numConfigs]
-      ] <$> vcat ( map (\d -> section "Configuration descriptor"
+      [ field' "USB specification" [ versionStyle' . ppBCD4
+                                   $ deviceUSBSpecReleaseNumber desc
+                                   ]
+      , field' "Class"             [usbNumStyle' classId, classDoc]
+      , field' "Sub class"         [usbNumStyle' subClassId, subClassDoc]
+      , field' "Protocol"          [usbNumStyle' protocolId, protocolDoc]
+      , field' "Max packet size"   [usbNumStyle' $ deviceMaxPacketSize0 desc]
+      , field' "Vendor ID"         [ usbNumStyle' $ text "0x" <> ppId vendorId
+                                   , ppVendorName style db vendorId id
+                                   ]
+      , field' "Product ID"        [ usbNumStyle' $ text "0x" <> ppId productId
+                                   , ppProductName style db vendorId productId id
+                                   ]
+      , field' "Release number"    [ versionStyle' . ppBCD4
+                                   $ deviceReleaseNumber desc
+                                   ]
+      , field' "Manufacturer"      [descrAddrStyle' manufacturerIx, manufacturerDoc]
+      , field' "Product"           [descrAddrStyle' productIx, productDoc]
+      , field' "Serial number"     [descrAddrStyle' serialIx, serialDoc]
+      , field' "Num configs"       [usbNumStyle' numConfigs]
+      ] <$> vcat ( map (\d -> section style "Configuration descriptor"
                               <$> indent 2 d)
                    configDocs
                  )
 
-ppConfigDescriptor :: IDDB -> Device -> ConfigDescriptor -> IO Doc
-ppConfigDescriptor db dev conf = do
-  let stringIx = configStrIx         conf
-      ifDescs  = configInterfaces conf
+ppConfigDescriptor :: PPStyle -> IDDB -> Device -> ConfigDescriptor -> IO Doc
+ppConfigDescriptor style db dev conf = do
+  let field'       = field       style
+      usbNumStyle' = usbNumStyle style
+      stringIx     = configStrIx      conf
+      ifDescs      = configInterfaces conf
 
-  stringDescriptor <- ppStringDescr dev stringIx
-  ifDescDocs       <- mapM (mapM $ ppInterfaceDescriptor db dev) ifDescs
+  stringDescriptor <- ppStringDescr style dev stringIx
+  ifDescDocs       <- mapM (mapM $ ppInterfaceDescriptor style db dev) ifDescs
 
-  let vcatAlternatives = (<$>) (section "Interface")
+  let vcatAlternatives = (<$>) (section style "Interface")
                        . indent 2
                        . vcat
-                       . map ((<$>) (section "Alternative") . indent 2)
+                       . map ( (<$>) (section style "Alternative")
+                             . indent 2
+                             )
 
   return $ columns 2
-    [ field "Value"          [usbNumVal (configValue conf)]
-    , field "Descriptor"     [descrAddrStyle stringIx, stringDescriptor]
-    , field "Attributes"     [pretty (configAttributes conf)]
-    , field "Max power"      [usbNumVal (2 * configMaxPower conf) <+> text "mA"]
-    , field "Num interfaces" [usbNumVal (configNumInterfaces conf)]
+    [ field' "Value"          [usbNumStyle' $ configValue conf]
+    , field' "Descriptor"     [descrAddrStyle style stringIx, stringDescriptor]
+    , field' "Attributes"     [pretty' style (configAttributes conf)]
+    , field' "Max power"      [usbNumStyle' (2 * configMaxPower conf) <+> text "mA"]
+    , field' "Num interfaces" [usbNumStyle' $ configNumInterfaces conf]
     ] <$> vcat (map vcatAlternatives ifDescDocs)
 
-ppInterfaceDescriptor :: IDDB -> Device -> InterfaceDescriptor -> IO Doc
-ppInterfaceDescriptor db dev ifDesc = do
-  let stringIx    = interfaceStrIx    ifDesc
-      classId     = interfaceClass    ifDesc
-      subClassId  = interfaceSubClass ifDesc
-      protocolId  = interfaceProtocol ifDesc
-      classDoc    = ppClass    db classId
-      subClassDoc = ppSubClass db classId subClassId
-      protocolDoc = ppProtocol db classId subClassId protocolId
+ppInterfaceDescriptor :: PPStyle -> IDDB -> Device -> InterfaceDescriptor -> IO Doc
+ppInterfaceDescriptor style db dev ifDesc = do
+  let field'          = field       style
+      usbNumStyle'    = usbNumStyle style
+      stringIx        = interfaceStrIx    ifDesc
+      classId         = interfaceClass    ifDesc
+      subClassId      = interfaceSubClass ifDesc
+      protocolId      = interfaceProtocol ifDesc
+      classDoc        = ppClass    style db classId
+      subClassDoc     = ppSubClass style db classId subClassId
+      protocolDoc     = ppProtocol style db classId subClassId protocolId
 
-  stringDescriptor <- ppStringDescr dev stringIx
+  stringDescriptor <- ppStringDescr style dev stringIx
 
   return $ columns 2
-    [ field "Interface number"    [usbNumVal (interfaceNumber       ifDesc)]
-    , field "Alternative setting" [usbNumVal (interfaceAltSetting   ifDesc)]
-    , field "Class"               [usbNumVal classId, classDoc]
-    , field "Sub class"           [usbNumVal subClassId, subClassDoc]
-    , field "Protocol"            [usbNumVal protocolId, protocolDoc]
-    , field "Descriptor"          [descrAddrStyle stringIx, stringDescriptor]
-    , field "Num endpoints"       [usbNumVal (interfaceNumEndpoints ifDesc)]
-    ] <$> vcat ( map (\e -> section "Endpoint" <$> indent 2 (pretty e))
+    [ field' "Interface number"    [usbNumStyle' $ interfaceNumber ifDesc]
+    , field' "Alternative setting" [usbNumStyle' $ interfaceAltSetting ifDesc]
+    , field' "Class"               [usbNumStyle' classId, classDoc]
+    , field' "Sub class"           [usbNumStyle' subClassId, subClassDoc]
+    , field' "Protocol"            [usbNumStyle' protocolId, protocolDoc]
+    , field' "Descriptor"          [descrAddrStyle style stringIx, stringDescriptor]
+    , field' "Num endpoints"       [usbNumStyle' $ interfaceNumEndpoints ifDesc]
+    ] <$> vcat ( map (\e -> section style "Endpoint" <$> indent 2 (pretty' style e))
                      $ interfaceEndpoints ifDesc
                )
+
 -------------------------------------------------------------------------------
 -- USB specific instances of Pretty
 
-instance Pretty DeviceStatus where
-    pretty ds = align
-           $ columns 2 [ field "Remote wakeup" [usbNumVal $ remoteWakeup ds]
-                       , field "Self powered"  [usbNumVal $ selfPowered  ds]
-                       ]
+class PrettyStyle a where
+    pretty' :: PPStyle -> a -> Doc
 
-instance Pretty EndpointDescriptor where
-    pretty ep = columns 2 [ field "Address"         [pretty $ endpointAddress       ep]
-                          , field "Attributes"      [pretty $ endpointAttributes    ep]
-                          , field "Max packet size" [pretty $ endpointMaxPacketSize ep]
-                          , field "Interval"        [usbNumVal (endpointInterval      ep)]
-                          , field "Refresh"         [usbNumVal (endpointRefresh       ep)]
-                          , field "Synch address"   [usbNumVal (endpointSynchAddress  ep)]
-                          ]
+instance PrettyStyle DeviceStatus where
+    pretty' s ds = align $ columns 2 [ field s "Remote wakeup"
+                                       [usbNumStyle s $ remoteWakeup ds]
+                                     , field s "Self powered"
+                                       [usbNumStyle s $ selfPowered  ds]
+                                     ]
 
-instance Pretty EndpointAddress where
-    pretty ea = usbNumVal (endpointNumber ea)
-                <+> char '-'
-                <+> pretty (endpointDirection ea)
+instance PrettyStyle EndpointDescriptor where
+    pretty' s ep =
+        columns 2 [ field' "Address"         [pretty' s $ endpointAddress ep]
+                  , field' "Attributes"      [pretty' s $ endpointAttributes    ep]
+                  , field' "Max packet size" [pretty' s $ endpointMaxPacketSize ep]
+                  , field' "Interval"
+                    [usbNumStyle s (endpointInterval ep)]
+                  , field' "Refresh"
+                    [usbNumStyle s (endpointRefresh ep)]
+                  , field' "Synch address"
+                    [usbNumStyle s (endpointSynchAddress  ep)]
+                  ]
+        where field' = field s
 
-instance Pretty TransferDirection where
-    pretty Out = usbStrVal $ text "host"   <+> text "->" <+> text "device"
-    pretty In  = usbStrVal $ text "device" <+> text "->" <+> text "host"
+instance PrettyStyle EndpointAddress where
+    pretty' s ea = usbNumStyle s (endpointNumber ea)
+                   <+> char '-'
+                   <+> pretty' s (endpointDirection ea)
 
-instance Pretty Synchronization where
-    pretty NoSynchronization = usbStrVal "no synchronization"
-    pretty es                = usbStrVal . map toLower $ show es
+instance PrettyStyle TransferDirection where
+    pretty' s Out = usbStrStyle s $ text "host"   <+> text "->" <+> text "device"
+    pretty' s In  = usbStrStyle s $ text "device" <+> text "->" <+> text "host"
+
+instance PrettyStyle Synchronization where
+    pretty' s NoSynchronization = usbStrStyle s "no synchronization"
+    pretty' s es                = usbStrStyle s . map toLower $ show es
 
 instance Pretty Usage where
     pretty = text . map toLower . show
 
-instance Pretty MaxPacketSize where
-    pretty mps = usbNumVal (maxPacketSize mps)
-                 <+> char '-'
-                 <+> pretty (transactionOpportunities mps)
+instance PrettyStyle MaxPacketSize where
+    pretty' s mps = usbNumStyle s (maxPacketSize mps)
+                    <+> char '-'
+                    <+> pretty' s (transactionOpportunities mps)
 
-instance Pretty TransactionOpportunities where
-    pretty NoAdditionalTransactions  = usbStrVal "no additional transactions"
-    pretty OneAdditionlTransaction   = usbStrVal "one additional transaction"
-    pretty TwoAdditionalTransactions = usbStrVal "two additional transactions"
+instance PrettyStyle TransactionOpportunities where
+    pretty' s NoAdditionalTransactions  = usbStrStyle s "no additional transactions"
+    pretty' s OneAdditionlTransaction   = usbStrStyle s "one additional transaction"
+    pretty' s TwoAdditionalTransactions = usbStrStyle s "two additional transactions"
 
-instance Pretty TransferType where
-    pretty (Isochronous s u) = usbStrVal
-                             $ text "isochronous"
-                               <+> char '-' <+> text "synch:" <+> pretty s
-                               <+> char '-' <+> text "usage:" <+> pretty u
-    pretty tt                = usbStrVal . text . map toLower $ show tt
+instance PrettyStyle  TransferType where
+    pretty' s (Isochronous syn u) =
+        usbStrStyle s $ text "isochronous"
+                        <+> char '-' <+> text "synch:" <+> pretty' s syn
+                        <+> char '-' <+> text "usage:" <+> pretty u
+    pretty' s tt = usbStrStyle s . text . map toLower $ show tt
