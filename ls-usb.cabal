@@ -17,7 +17,7 @@ executable ls-usb
                , bytestring      == 0.9.*
                , cmdargs         == 0.1.*
                , usb             == 0.1.*
-               , usb-id-database == 0.3.*
+               , usb-id-database == 0.4.*
   ghc-options: -O2 -Wall -fno-warn-orphans
   main-is: ls-usb.hs
   other-modules: PrettyDevList

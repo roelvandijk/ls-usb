@@ -8,23 +8,21 @@ module PrettyDevList
 
 import Prelude hiding ( catch )
 
-import Control.Arrow                  ( (>>>) )
-import Control.Exception              ( catch )
-import Control.Monad                  ( liftM, mapM )
-import Data.ByteString.Char8          ( ByteString, unpack )
-import Data.Char                      ( toLower )
-import Data.List                      ( intersperse, transpose )
-import Data.Word                      ( Word8, Word16 )
+import Control.Arrow         ( (>>>) )
+import Control.Exception     ( catch )
+import Control.Monad         ( liftM, mapM )
+import Data.ByteString.Char8 ( ByteString, unpack )
+import Data.Char             ( toLower )
+import Data.List             ( intersperse, transpose )
+import Data.Word             ( Word8, Word16 )
 import System.USB
-import System.USB.IDDB                ( IDDB
-                                      , vendorName
-                                      , productName
-                                      , className
-                                      , subClassName
-                                      , protocolName
-                                      )
+import System.USB.IDDB       ( IDDB
+                             , vendorName, productName
+                             , className, subClassName, protocolName
+                             , langName, subLangName
+                             )
 import Text.PrettyPrint.ANSI.Leijen
-import Text.Printf                    ( PrintfArg, printf )
+import Text.Printf           ( PrintfArg, printf )
 
 -------------------------------------------------------------------------------
 -- Pretty printing styles
@@ -144,11 +142,13 @@ ppStringDesc style dev ix = catchUSBException
                                     ix
                                     stringBufferSize
     )
-    (return . ppErr)
-    where ppErr e = dquotes
-                  . (errorDescrStyle style)
-                  $ text "Couldn't retrieve string descriptor:"
-                    <+> errorStyle style (show e)
+    (return . ppError style "Couldn't retrieve string descriptor")
+
+ppError :: Show e => PPStyle -> String -> e -> Doc
+ppError style descr err = errorDescrStyle style
+                        $ text descr
+                          <> char ':'
+                          <+> errorStyle style (show err)
 
 ppId :: PrintfArg n => n -> Doc
 ppId x = text (printf "%04x" x :: String)
@@ -194,41 +194,70 @@ ppProtocol style db cid scid protId = maybe unknown (stringStyle style)
           scid'   = fromIntegral scid
           protId' = fromIntegral protId
 
+ppLanguage :: PPStyle -> IDDB -> LangId -> Doc
+ppLanguage style db (lid, slid) =
+    let lid' = fromIntegral lid
+        slid' = fromIntegral slid
+        prettyLang = stringStyle style
+        langDoc = maybe unknown prettyLang $ langName db lid'
+        subDoc  = maybe unknown prettyLang $ subLangName db lid' slid'
+    in langDoc <+> char '-' <+> subDoc
+
+ppLanguageList :: PPStyle -> IDDB -> Device -> IO Doc
+ppLanguageList style db dev =
+    catchUSBException ( withDeviceHandle dev
+                      $ fmap (hsep . punctuate (text ", ") . map (ppLanguage style db))
+                      . getLanguages
+                      )
+                      ( return
+                      . ppError style "Couldn't retrieve language list"
+                      )
+
 ppDevices :: PPStyle -> IDDB -> Bool -> [Device] -> IO Doc
 ppDevices style db False = liftM vcat . mapM (ppDeviceShort style db)
 ppDevices style db True  = liftM (vcat . intersperse (char ' '))
                          . mapM (ppDevice style db)
 
+ppAddr :: PrintfArg n => PPStyle -> IO n -> IO Doc
+ppAddr style a = let toDoc = addrStyle style :: String -> Doc
+                 in fmap (toDoc . printf "%03d") a
+
 ppDeviceShort :: PPStyle -> IDDB -> Device -> IO Doc
 ppDeviceShort style db dev = do
-    busNum  <- getBusNumber     dev
-    devAddr <- getDeviceAddress dev
-    desc    <- getDeviceDesc    dev
+  desc       <- getDeviceDesc    dev
+  busDoc     <- ppAddr style (getBusNumber dev)
+  devAddrDoc <- ppAddr style (getDeviceAddress dev)
 
-    let vid = deviceVendorId  desc
-        pid = deviceProductId desc
+  let vid = deviceVendorId  desc
+      pid = deviceProductId desc
 
-    return $ text "Bus"
-             <+> (addrStyle style) (printf "%03d" busNum :: String)
-             <+> text "Device"
-             <+> (addrStyle style) (printf "%03d" devAddr :: String)
-             <>  char ':'
-             <+> text "ID"
-             <+> (usbNumStyle style) (ppId vid)
-             <>  char ':'
-             <>  (usbNumStyle style) (ppId pid)
-             <+> ppVendorName style db vid
-                 (<+> ppProductName style db vid pid (char '-' <+>))
+  return $   text "Bus"    <+> busDoc
+         <+> text "Device" <+> devAddrDoc <> char ':'
+         <+> text "ID"
+         <+> (usbNumStyle style) (ppId vid) <>  char ':'
+         <>  (usbNumStyle style) (ppId pid)
+         <+> ppVendorName style db vid
+             (<+> ppProductName style db vid pid (char '-' <+>))
 
 ppDevice :: PPStyle -> IDDB -> Device -> IO Doc
 ppDevice style db dev = do
-  shortDesc <- ppDeviceShort style db dev
   desc      <- getDeviceDesc dev
   descDoc   <- ppDeviceDesc style db dev desc
+  langDoc   <- ppLanguageList style db dev
+  busDoc     <- ppAddr style (getBusNumber dev)
+  devAddrDoc <- ppAddr style (getDeviceAddress dev)
 
-  return $  shortDesc
-        <$> section style "Device descriptor"
-        <$> indent 2 descDoc
+  let field' = field style
+
+  return $ section style "Device"
+        <$> indent 2
+            (   columns 2 [ field' "Bus"                 [busDoc]
+                          , field' "Address"             [devAddrDoc]
+                          , field' "Supported languages" [langDoc]
+                          ]
+            <$> section style "Device descriptor"
+            <$> indent 2 descDoc
+            )
 
 ppDeviceDesc :: PPStyle -> IDDB -> Device -> DeviceDesc -> IO Doc
 ppDeviceDesc style db dev desc = do
