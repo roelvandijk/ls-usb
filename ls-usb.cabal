@@ -10,6 +10,8 @@ license:       BSD3
 license-file:  LICENSE
 category:      System
 synopsis:      List USB devices
+description:
+  A small utility that lists USB devices connected to your system.
 
 executable ls-usb
   build-depends: ansi-wl-pprint  == 0.5.*
