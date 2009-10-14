@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module PrettyDevList
     ( PPStyle(..)
@@ -255,7 +256,7 @@ ppDevice style db dev = do
                           , field' "Address"             [devAddrDoc]
                           , field' "Supported languages" [langDoc]
                           ]
-            <$> section style "Device descriptor"
+            <$> section style "Device Descriptor"
             <$> indent 2 descDoc
             )
 
@@ -310,7 +311,7 @@ ppDeviceDesc style db dev desc = do
       , field' "Product"           [descrAddrStyle' productIx, productDoc]
       , field' "Serial number"     [descrAddrStyle' serialIx, serialDoc]
       , field' "Num configs"       [usbNumStyle' numConfigs]
-      ] <$> vcat ( map (\d -> section style "Configuration descriptor"
+      ] <$> vcat ( map (\d -> section style "Configuration Descriptor"
                               <$> indent 2 d)
                    configDocs
                  )
@@ -343,6 +344,7 @@ ppConfigDesc style db dev conf = do
 ppInterfaceDesc :: PPStyle -> IDDB -> Device -> InterfaceDesc -> IO Doc
 ppInterfaceDesc style db dev ifDesc = do
   let field'          = field       style
+      usbNumStyle' :: forall a. Pretty a => a -> Doc
       usbNumStyle'    = usbNumStyle style
       stringIx        = interfaceStrIx    ifDesc
       classId         = interfaceClass    ifDesc
@@ -351,6 +353,8 @@ ppInterfaceDesc style db dev ifDesc = do
       classDoc        = ppClass    style db classId
       subClassDoc     = ppSubClass style db classId subClassId
       protocolDoc     = ppProtocol style db classId subClassId protocolId
+      inEndpts        = interfaceInEndpoints  ifDesc
+      outEndpts       = interfaceOutEndpoints ifDesc
 
   strDesc <- ppStringDesc style dev stringIx
 
@@ -361,9 +365,13 @@ ppInterfaceDesc style db dev ifDesc = do
     , field' "Sub class"           [usbNumStyle' subClassId, subClassDoc]
     , field' "Protocol"            [usbNumStyle' protocolId, protocolDoc]
     , field' "Descriptor"          [descrAddrStyle style stringIx, strDesc]
-    , field' "Num endpoints"       [usbNumStyle' $ interfaceNumEndpoints ifDesc]
-    ] <$> vcat ( map (\e -> section style "Endpoint" <$> indent 2 (pretty' style e))
-                     $ interfaceEndpoints ifDesc
+    , field' "Num in endpoints"    [usbNumStyle' $ length inEndpts]
+    , field' "Num out endpoints"   [usbNumStyle' $ length outEndpts]
+    ] <$> vcat ( map (\e -> section style "In Endpoint" <$> indent 2 (pretty' style e))
+                     $ inEndpts
+               )
+      <$> vcat ( map (\e -> section style "Out Endpoint" <$> indent 2 (pretty' style e))
+                     $ outEndpts
                )
 
 -------------------------------------------------------------------------------
@@ -372,35 +380,33 @@ ppInterfaceDesc style db dev ifDesc = do
 class PrettyStyle a where
     pretty' :: PPStyle -> a -> Doc
 
+instance PrettyStyle dir => PrettyStyle (EndpointDesc dir) where
+    pretty' s ep =
+        columns 2
+        [ field' "Address"         [pretty' s $ endpointAddress ep]
+        , field' "Attributes"      [pretty' s $ endpointAttribs       ep]
+        , field' "Max packet size" [pretty' s $ endpointMaxPacketSize ep]
+        , field' "Interval"        [usbNumStyle s (endpointInterval     ep)]
+        , field' "Refresh"         [usbNumStyle s (endpointRefresh      ep)]
+        , field' "Synch address"   [usbNumStyle s (endpointSynchAddress ep)]
+        ]
+        where field' = field s
+
+instance PrettyStyle dir => PrettyStyle (EndpointAddress dir) where
+    pretty' s ea = usbNumStyle s (endpointNumber ea)
+                   <+> char '-' <+> pretty' s (undefined :: dir)
+
 instance PrettyStyle DeviceStatus where
     pretty' s ds = align $ columns 2 [ field s "Remote wakeup"
                                        [usbNumStyle s $ remoteWakeup ds]
                                      , field s "Self powered"
                                        [usbNumStyle s $ selfPowered  ds]
                                      ]
+instance PrettyStyle Out where
+    pretty' s _ = usbStrStyle s $ text "host" <+> text "->" <+> text "device"
 
-instance PrettyStyle EndpointDesc where
-    pretty' s ep =
-        columns 2 [ field' "Address"         [pretty' s $ endpointAddress       ep]
-                  , field' "Attributes"      [pretty' s $ endpointAttribs       ep]
-                  , field' "Max packet size" [pretty' s $ endpointMaxPacketSize ep]
-                  , field' "Interval"
-                    [usbNumStyle s (endpointInterval ep)]
-                  , field' "Refresh"
-                    [usbNumStyle s (endpointRefresh ep)]
-                  , field' "Synch address"
-                    [usbNumStyle s (endpointSynchAddress  ep)]
-                  ]
-        where field' = field s
-
-instance PrettyStyle EndpointAddress where
-    pretty' s ea = usbNumStyle s (endpointNumber ea)
-                   <+> char '-'
-                   <+> pretty' s (endpointDirection ea)
-
-instance PrettyStyle TransferDirection where
-    pretty' s Out = usbStrStyle s $ text "host"   <+> text "->" <+> text "device"
-    pretty' s In  = usbStrStyle s $ text "device" <+> text "->" <+> text "host"
+instance PrettyStyle In where
+    pretty' s _ = usbStrStyle s $ text "device" <+> text "->" <+> text "host"
 
 instance PrettyStyle Synchronization where
     pretty' s NoSynchronization = usbStrStyle s "no synchronization"
