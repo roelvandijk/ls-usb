@@ -18,7 +18,7 @@ executable ls-usb
                , base            >= 4.0     && < 4.2
                , bytestring      >= 0.9.1.4 && < 0.10
                , cmdargs         == 0.1.*
-               , usb             >= 0.1 && < 0.3
+               , usb             == 0.3.*
                , usb-id-database == 0.4.*
   ghc-options: -Wall -fno-warn-orphans
   main-is: ls-usb.hs
