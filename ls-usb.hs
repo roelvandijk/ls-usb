@@ -7,13 +7,9 @@ import PrettyDevList                  ( ppDevices
                                       , brightStyle, darkStyle
                                       )
 import System.Console.CmdArgs
-import System.IO                      ( stdout )
 import System.USB
 import System.USB.IDDB.LinuxUsbIdRepo ( staticDb )
-import Text.PrettyPrint.ANSI.Leijen   ( Doc, SimpleDoc(..)
-                                      , displayIO
-                                      , putDoc, renderPretty
-                                      )
+import Text.PrettyPrint.ANSI.Leijen   ( putDoc, plain )
 
 -------------------------------------------------------------------------------
 -- Main
@@ -45,13 +41,13 @@ defaultOpts = mode Options
     & helpSuffix ["Please ensure you have sufficient rights before running with higher verbosity"]
 
 main :: IO ()
-main = do opts <- cmdArgs "ls-usb 0.1, (C) Roel van Dijk 2009" [defaultOpts]
+main = do opts <- cmdArgs "ls-usb 0.1.0.1, (C) Roel van Dijk 2009" [defaultOpts]
           verbose <- isLoud
           db <- staticDb
           ctx <- newCtx
           let style | darker opts = darkStyle
                     | otherwise   = brightStyle
-          printDoc (not $ nocolour opts)
+          (putDoc . if nocolour opts then plain else id)
               =<< ppDevices style db verbose
               =<< filterM (filterFromOpts opts)
               =<< getDevices ctx
@@ -71,14 +67,14 @@ filterFromOpts opts = andF $ map (filterNonEmpty . ($ opts))
 type F m a = a -> m Bool
 
 -- Construct a filter combinator from a binary boolean operator.
-boolBinOpToFComb :: Monad m => (Bool -> Bool -> Bool) -> F m a -> F m a -> F m a
-boolBinOpToFComb op f g = \x -> liftM2 op (f x) (g x)
+binBoolOpToFComb :: Monad m => (Bool -> Bool -> Bool) -> F m a -> F m a -> F m a
+binBoolOpToFComb op f g = \x -> liftM2 op (f x) (g x)
 
 (<||>) :: Monad m => F m a -> F m a -> F m a
-(<||>) = boolBinOpToFComb (||)
+(<||>) = binBoolOpToFComb (||)
 
 (<&&>) :: Monad m => F m a -> F m a -> F m a
-(<&&>) = boolBinOpToFComb (&&)
+(<&&>) = binBoolOpToFComb (&&)
 
 constF :: Monad m => Bool -> F m a
 constF = const . return
@@ -116,19 +112,3 @@ matchDevAddr address' dev = return
                           . (address' ==)
                           . fromIntegral
                           =<< getDeviceAddress dev
-
--------------------------------------------------------------------------------
--- Pretty printer utilities
-
-printDoc :: Bool -> Doc -> IO ()
-printDoc colour doc | colour    = putDoc doc
-                    | otherwise = displayIO stdout
-                                  . stripColours
-                                  $ renderPretty 0.4 100 doc
-    where
-      stripColours :: SimpleDoc -> SimpleDoc
-      stripColours e@(SEmpty)    = e
-      stripColours (SChar   c d) = SChar c   $ stripColours d
-      stripColours (SText l s d) = SText l s $ stripColours d
-      stripColours (SLine l   d) = SLine l   $ stripColours d
-      stripColours (SSGR _    d) = stripColours d
