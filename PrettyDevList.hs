@@ -396,8 +396,8 @@ instance PrettyStyle EndpointAddress where
                    <+> char '-' <+> pretty' s (transferDirection ea)
 
 instance PrettyStyle TransferDirection where
-    pretty' s Out = usbStrStyle s $ text "host" <+> text "→" <+> text "device"
-    pretty' s In  = usbStrStyle s $ text "device" <+> text "→" <+> text "host"
+    pretty' s Out = usbStrStyle s $ text "Out (host" <+> text "->" <+> text "device)"
+    pretty' s In  = usbStrStyle s $ text "In (device" <+> text "->" <+> text "host)"
 
 instance PrettyStyle DeviceStatus where
     pretty' s ds = align $ columns 2 [ field s "Remote wakeup"
