@@ -3,7 +3,6 @@
 
 module Main where
 
-import Control.Monad                  ( (>=>), filterM, liftM2 )
 import Data.Word                      ( Word8 )
 import Prelude.Unicode                ( (∘), (∧), (∨), (≡))
 import PrettyDevList                  ( ppDevices
