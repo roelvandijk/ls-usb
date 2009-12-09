@@ -1,8 +1,11 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE UnicodeSyntax #-}
 
 module Main where
 
 import Control.Monad                  ( (>=>), filterM, liftM2 )
+import Data.Word                      ( Word8 )
+import Prelude.Unicode                ( (∘), (∧), (∨), (≡))
 import PrettyDevList                  ( ppDevices
                                       , brightStyle, darkStyle
                                       )
@@ -14,15 +17,15 @@ import Text.PrettyPrint.ANSI.Leijen   ( putDoc, plain )
 -------------------------------------------------------------------------------
 -- Main
 
-data Options = Options { vid      :: [Int]
-                       , pid      :: [Int]
-                       , bus      :: [Int]
-                       , address  :: [Int]
-                       , nocolour :: Bool
-                       , darker   :: Bool
+data Options = Options { vid      ∷ [Int]
+                       , pid      ∷ [Int]
+                       , bus      ∷ [Int]
+                       , address  ∷ [Int]
+                       , nocolour ∷ Bool
+                       , darker   ∷ Bool
                        } deriving (Show, Data, Typeable)
 
-defaultOpts :: Mode Options
+defaultOpts ∷ Mode Options
 defaultOpts = mode Options
   { vid      = def &= explicit & flag "vid" & typ "VID"
              & text "List devices with this VID"
@@ -40,75 +43,65 @@ defaultOpts = mode Options
     & text "Lists connected USB devices"
     & helpSuffix ["Please ensure you have sufficient rights before running with higher verbosity"]
 
-main :: IO ()
-main = do opts <- cmdArgs "ls-usb 0.1.0.1, (C) Roel van Dijk 2009" [defaultOpts]
-          verbose <- isLoud
-          db <- staticDb
-          ctx <- newCtx
+main ∷ IO ()
+main = do opts    ← cmdArgs "ls-usb 0.1.0.1, (C) Roel van Dijk 2009" 
+                            [defaultOpts]
+          verbose ← isLoud
+          db      ← staticDb
+          ctx     ← newCtx
           let style | darker opts = darkStyle
                     | otherwise   = brightStyle
-          (putDoc . if nocolour opts then plain else id)
-              =<< ppDevices style db verbose
-              =<< filterM (filterFromOpts opts)
+          (putDoc ∘ if nocolour opts then plain else id)
+              =<< ppDevices style db verbose 
+              ∘   filter (filterFromOpts opts)
               =<< getDevices ctx
           putStrLn ""
 
-filterFromOpts :: Options -> F IO Device
-filterFromOpts opts = andF $ map (filterNonEmpty . ($ opts))
-                             [ map (descToDevFilter . matchVID . fromIntegral) . vid
-                             , map (descToDevFilter . matchPID . fromIntegral) . pid
-                             , map matchBus     . bus
-                             , map matchDevAddr . address
-                             ]
+filterFromOpts ∷ Options → F Device
+filterFromOpts opts = andF $ map (filterNonEmpty ∘ ($ opts))
+                      [ map (matchVID     ∘ fromIntegral) ∘ vid
+                      , map (matchPID     ∘ fromIntegral) ∘ pid
+                      , map (matchBus     ∘ fromIntegral) ∘ bus
+                      , map (matchDevAddr ∘ fromIntegral) ∘ address
+                      ]
+                             
 
 -------------------------------------------------------------------------------
 -- Filters
 
-type F m a = a -> m Bool
+type F a = a → Bool
 
 -- Construct a filter combinator from a binary boolean operator.
-binBoolOpToFComb :: Monad m => (Bool -> Bool -> Bool) -> F m a -> F m a -> F m a
-binBoolOpToFComb op f g = \x -> liftM2 op (f x) (g x)
+binBoolOpToFComb ∷ (Bool → Bool → Bool) → F a → F a → F a
+binBoolOpToFComb (⊗) f g = \x → f x ⊗ g x
 
-(<||>) :: Monad m => F m a -> F m a -> F m a
-(<||>) = binBoolOpToFComb (||)
+(<∨>) ∷ F a → F a → F a
+(<∨>) = binBoolOpToFComb (∨)
 
-(<&&>) :: Monad m => F m a -> F m a -> F m a
-(<&&>) = binBoolOpToFComb (&&)
+(<∧>) ∷ F a → F a → F a
+(<∧>) = binBoolOpToFComb (∧)
 
-constF :: Monad m => Bool -> F m a
-constF = const . return
+andF ∷ [F a] → F a
+andF = foldr (<∧>) (const True)
 
-andF :: Monad m => [F m a] -> F m a
-andF = foldr (<&&>) (constF True)
+orF ∷ [F a] → F a
+orF = foldr (<∨>) (const False)
 
-orF :: Monad m => [F m a] -> F m a
-orF = foldr (<||>) (constF False)
-
-filterNonEmpty :: Monad m => [F m a] -> F m a
-filterNonEmpty [] = constF True
-filterNonEmpty xs = foldr (<||>) (constF False) xs
+filterNonEmpty ∷ [F a] → F a
+filterNonEmpty [] = const True
+filterNonEmpty xs = foldr (<∨>) (const False) xs
 
 -------------------------------------------------------------------------------
 -- Specific Device filters
 
-descToDevFilter :: F IO DeviceDesc -> F IO Device
-descToDevFilter = (getDeviceDesc >=>)
+matchVID ∷ VendorId → F Device
+matchVID vid' = (vid' ≡) ∘ deviceVendorId ∘ deviceDesc
 
-matchVID :: VendorId -> F IO DeviceDesc
-matchVID vid' desc = return $ vid' == deviceVendorId desc
+matchPID ∷ ProductId → F Device
+matchPID pid' = (pid' ≡) ∘ deviceProductId ∘ deviceDesc
 
-matchPID :: ProductId -> F IO DeviceDesc
-matchPID pid' desc = return $ pid' == deviceProductId desc
+matchBus ∷ Word8 → F Device
+matchBus bus' = (bus' ≡) ∘ busNumber
 
-matchBus :: Int -> F IO Device
-matchBus bus' dev = return
-                  . (bus' ==)
-                  . fromIntegral
-                  =<< getBusNumber dev
-
-matchDevAddr :: Int -> F IO Device
-matchDevAddr address' dev = return
-                          . (address' ==)
-                          . fromIntegral
-                          =<< getDeviceAddress dev
+matchDevAddr ∷ Word8 → F Device
+matchDevAddr addr = (addr ≡) ∘ deviceAddress
