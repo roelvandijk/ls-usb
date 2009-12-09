@@ -419,9 +419,9 @@ instance PrettyStyle MaxPacketSize where
                     <+> pretty' s (transactionOpportunities mps)
 
 instance PrettyStyle TransactionOpportunities where
-    pretty' s Zero = usbStrStyle s "no additional transactions"
-    pretty' s One  = usbStrStyle s "one additional transaction"
-    pretty' s Two  = usbStrStyle s "two additional transactions"
+    pretty' s Zero = usbStrStyle s "Zero additional transactions"
+    pretty' s One  = usbStrStyle s "One additional transaction"
+    pretty' s Two  = usbStrStyle s "Two additional transactions"
 
 instance PrettyStyle  TransferType where
     pretty' s (Isochronous syn u) =
