@@ -233,8 +233,8 @@ ppDeviceShort style db dev = do
       busDoc     = ppAddr style $ busNumber dev
       devAddrDoc = ppAddr style $ deviceAddress dev
 
-  return $   text "Bus"    <+> busDoc
-         <+> text "Device" <+> devAddrDoc <> char ':'
+  return $   text "Bus"     <+> busDoc
+         <+> text "Address" <+> devAddrDoc <> char ':'
          <+> text "ID"
          <+> (usbNumStyle style) (ppId vid) <>  char ':'
          <>  (usbNumStyle style) (ppId pid)
