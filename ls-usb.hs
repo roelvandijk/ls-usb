@@ -3,15 +3,50 @@
 
 module Main where
 
+-- ansi-wl-pprint
+import Text.PrettyPrint.ANSI.Leijen   ( putDoc, plain )
+
+-- base
+import Control.Monad                  ( (=<<) )
+import Data.Bool                      ( Bool(False, True), otherwise )
+import Data.Data                      ( Data )
+import Data.Function                  ( ($), const, id )
+import Data.Int                       ( Int )
+import Data.List                      ( filter, foldr, map )
+import Data.Typeable                  ( Typeable )
 import Data.Word                      ( Word8 )
-import Prelude.Unicode                ( (∘), (∧), (∨), (≡))
+import Prelude                        ( fromIntegral )
+import System.IO                      ( IO, putStrLn )
+import Text.Show                      ( Show )
+
+-- base-unicode-symbols
+import Prelude.Unicode                ( (∘), (∧), (∨), (≡) )
+
+-- CmdArgs
+import System.Console.CmdArgs         ( Mode
+                                      , (&), (&=)
+                                      , mode, def, explicit, flag, typ, text
+                                      , prog, helpSuffix, cmdArgs, isLoud
+                                      )
+
+-- ls-usb (this program)
 import PrettyDevList                  ( ppDevices
                                       , brightStyle, darkStyle
                                       )
-import System.Console.CmdArgs
-import System.USB
+
+-- usb
+import System.USB.Initialization      ( newCtx )
+import System.USB.Enumeration         ( Device
+                                      , getDevices, deviceDesc
+                                      , busNumber, deviceAddress
+                                      )
+import System.USB.Descriptors         ( VendorId, ProductId
+                                      , deviceVendorId, deviceProductId
+                                      )
+
+-- usb-id-database
 import System.USB.IDDB.LinuxUsbIdRepo ( staticDb )
-import Text.PrettyPrint.ANSI.Leijen   ( putDoc, plain )
+
 
 -------------------------------------------------------------------------------
 -- Main
@@ -43,7 +78,7 @@ defaultOpts = mode Options
     & helpSuffix ["Please ensure you have sufficient rights before running with higher verbosity"]
 
 main ∷ IO ()
-main = do opts    ← cmdArgs "ls-usb 0.1.0.1, (C) Roel van Dijk 2009" 
+main = do opts    ← cmdArgs "ls-usb 0.1.0.3, (C) Roel van Dijk 2009"
                             [defaultOpts]
           verbose ← isLoud
           db      ← staticDb
@@ -51,7 +86,7 @@ main = do opts    ← cmdArgs "ls-usb 0.1.0.1, (C) Roel van Dijk 2009"
           let style | darker opts = darkStyle
                     | otherwise   = brightStyle
           (putDoc ∘ if nocolour opts then plain else id)
-              =<< ppDevices style db verbose 
+              =<< ppDevices style db verbose
               ∘   filter (filterFromOpts opts)
               =<< getDevices ctx
           putStrLn ""
@@ -63,7 +98,7 @@ filterFromOpts opts = andF $ map (filterNonEmpty ∘ ($ opts))
                       , map (matchBus     ∘ fromIntegral) ∘ bus
                       , map (matchDevAddr ∘ fromIntegral) ∘ address
                       ]
-                             
+
 
 -------------------------------------------------------------------------------
 -- Filters

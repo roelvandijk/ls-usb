@@ -1,5 +1,5 @@
 name:          ls-usb
-version:       0.1.0.2
+version:       0.1.0.3
 cabal-version: >= 1.6
 build-type:    Simple
 stability:     experimental
@@ -14,13 +14,14 @@ description:
   A small utility that lists USB devices connected to your system.
 
 executable ls-usb
-  build-depends: ansi-wl-pprint  >= 0.5.1   && < 0.6
-               , base            >= 4.0     && < 4.2
-               , bytestring      >= 0.9.1.4 && < 0.10
-               , cmdargs         == 0.1.*
-               , unicode-symbols == 0.1.*
-               , usb             == 0.3.*
-               , usb-id-database == 0.4.*
+  build-depends: ansi-wl-pprint       >= 0.5.1   && < 0.6
+               , base                 >= 4.0     && < 4.3
+               , base-unicode-symbols == 0.1.*
+               , bytestring           >= 0.9.1.4 && < 0.10
+               , cmdargs              == 0.1.*
+               , usb                  == 0.3.*
+               , usb-safe             == 0.4.*
+               , usb-id-database      == 0.4.*
   ghc-options: -Wall -fno-warn-orphans
   main-is: ls-usb.hs
   other-modules: PrettyDevList

@@ -8,24 +8,89 @@ module PrettyDevList
     , ppDevices
     ) where
 
-import Prelude hiding ( catch )
+-- ansi-wl-pprint
+import Text.PrettyPrint.ANSI.Leijen ( Doc, Pretty, SimpleDoc(..)
+                                    , (<+>), (<$>), (<>)
+                                    , align, char, dquotes, empty, fill, hcat
+                                    , hsep, indent, int, pretty, punctuate
+                                    , renderPretty, text, vcat
+                                    , bold, cyan, dullred, green, magenta
+                                    , oncyan, ongreen, onmagenta, onyellow, red
+                                    , underline, white, yellow
+                                    )
 
-import Control.Arrow         ( (>>>) )
-import Control.Exception     ( catch )
-import Control.Monad         ( liftM, mapM )
-import Data.ByteString.Char8 ( ByteString, unpack )
-import Data.Char             ( toLower )
-import Data.List             ( intersperse, partition, transpose )
-import Data.Word             ( Word8, Word16 )
-import Prelude.Unicode       ( (∘), (⋅) )
-import System.USB
-import System.USB.IDDB       ( IDDB
-                             , vendorName, productName
-                             , className, subClassName, protocolName
-                             , langName, subLangName
-                             )
-import Text.PrettyPrint.ANSI.Leijen
-import Text.Printf           ( PrintfArg, printf )
+-- base
+import Control.Arrow             ( (>>>) )
+import Control.Exception         ( catch )
+import Control.Monad             ( fmap, liftM, mapM, return )
+import Data.Bool                 ( Bool(False, True) )
+import Data.Char                 ( String, toLower )
+import Data.Function             ( ($), id )
+import Data.Int                  ( Int )
+import Data.List                 ( intersperse, length, map, maximum
+                                 , partition, transpose, zipWith
+                                 )
+import Data.Maybe                ( maybe )
+import Data.Word                 ( Word8, Word16 )
+import Prelude                   ( (+), fromIntegral )
+import System.IO                 ( IO )
+import Text.Printf               ( PrintfArg, printf )
+import Text.Show                 ( Show, show )
+
+-- base-unicode-symbols
+import Prelude.Unicode           ( (∘), (⋅), (≡) )
+
+-- bytestring
+import Data.ByteString.Char8     ( ByteString, unpack )
+
+-- usb
+import System.USB.Descriptors    ( DeviceDesc
+                                 , deviceClass, deviceConfigs
+                                 , deviceManufacturerStrIx
+                                 , deviceMaxPacketSize0, deviceNumConfigs
+                                 , deviceProductId, deviceProductStrIx
+                                 , deviceProtocol, deviceReleaseNumber
+                                 , deviceSerialNumberStrIx, deviceSubClass
+                                 , deviceUSBSpecReleaseNumber, deviceVendorId
+                                 , BCD4
+                                 , ConfigDesc
+                                 , configAttribs, configInterfaces
+                                 , configMaxPower, configNumInterfaces
+                                 , configStrIx, configValue
+                                 , DeviceStatus
+                                 , remoteWakeup, selfPowered
+                                 , InterfaceDesc
+                                 , interfaceAltSetting, interfaceClass
+                                 , interfaceEndpoints, interfaceNumber
+                                 , interfaceProtocol, interfaceStrIx
+                                 , interfaceSubClass
+                                 , EndpointDesc
+                                 , endpointAddress, endpointAttribs
+                                 , endpointInterval, endpointMaxPacketSize
+                                 , endpointRefresh, endpointSynchAddress
+                                 , EndpointAddress
+                                 , endpointNumber, transferDirection
+                                 , TransferDirection(In, Out)
+                                 , TransferType(Isochronous)
+                                 , Synchronization(NoSynchronization)
+                                 , Usage
+                                 , MaxPacketSize
+                                 , maxPacketSize, transactionOpportunities
+                                 , TransactionOpportunities(Zero, One, Two)
+                                 , LangId, StrIx
+                                 )
+import System.USB.Safe           ( with, getStrDescFirstLang, getLanguages )
+import System.USB.Enumeration    ( Device
+                                 , deviceDesc, busNumber, deviceAddress
+                                 )
+import System.USB.Exceptions     ( USBException )
+
+-- usb-id-database
+import System.USB.IDDB           ( IDDB
+                                 , vendorName, productName
+                                 , className, subClassName, protocolName
+                                 , langName, subLangName
+                                 )
 
 -------------------------------------------------------------------------------
 -- Pretty printing styles
@@ -139,7 +204,7 @@ ppBCD4 (a, b, c, d) = hcat ∘ punctuate (char '.') $ map pretty [a, b, c, d]
 ppStringDesc ∷ PPStyle → Device → StrIx → IO Doc
 ppStringDesc _     _   0  = return empty
 ppStringDesc style dev ix = catchUSBException
-    ( withDeviceHandle dev $ \devH →
+    ( with dev $ \devH →
         liftM (descrStyle style)
               $ getStrDescFirstLang devH
                                     ix
@@ -208,7 +273,7 @@ ppLanguage style db (lid, slid) =
 
 ppLanguageList ∷ PPStyle → IDDB → Device → IO Doc
 ppLanguageList style db dev =
-    catchUSBException ( withDeviceHandle dev
+    catchUSBException ( with dev
                       $ fmap (hsep ∘ punctuate (text ", ") ∘ map (ppLanguage style db))
                       ∘ getLanguages
                       )
@@ -351,8 +416,8 @@ ppInterfaceDesc style db dev ifDesc = do
       classDoc        = ppClass    style db classId
       subClassDoc     = ppSubClass style db classId subClassId
       protocolDoc     = ppProtocol style db classId subClassId protocolId
-      (inEndpts, outEndpts) = 
-          partition ((==) In ∘ transferDirection ∘ endpointAddress) 
+      (inEndpts, outEndpts) =
+          partition ((In ≡) ∘ transferDirection ∘ endpointAddress)
                     $ interfaceEndpoints ifDesc
 
   strDesc ← ppStringDesc style dev stringIx
