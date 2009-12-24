@@ -13,6 +13,10 @@ synopsis:      List USB devices
 description:
   A small utility that lists USB devices connected to your system.
 
+source-repository head
+  type:     darcs
+  location: http://code.haskell.org/~roelvandijk/code/ls-usb
+
 executable ls-usb
   build-depends: ansi-wl-pprint       >= 0.5.1   && < 0.6
                , base                 >= 4.0     && < 4.3
