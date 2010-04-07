@@ -1,5 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE UnicodeSyntax #-}
+{-# LANGUAGE DeriveDataTypeable, NoImplicitPrelude, UnicodeSyntax #-}
 
 module Main where
 
@@ -7,7 +6,7 @@ module Main where
 import Text.PrettyPrint.ANSI.Leijen   ( putDoc, plain )
 
 -- base
-import Control.Monad                  ( (=<<) )
+import Control.Monad                  ( (>>=), (>>), (=<<), fail )
 import Data.Bool                      ( Bool(False, True), otherwise )
 import Data.Data                      ( Data )
 import Data.Function                  ( ($), const, id )
@@ -20,7 +19,9 @@ import System.IO                      ( IO, putStrLn )
 import Text.Show                      ( Show )
 
 -- base-unicode-symbols
-import Prelude.Unicode                ( (∘), (∧), (∨), (≡) )
+import Data.Function.Unicode          ( (∘) )
+import Data.Bool.Unicode              ( (∧), (∨) )
+import Data.Eq.Unicode                ( (≡) )
 
 -- CmdArgs
 import System.Console.CmdArgs         ( Mode
@@ -78,7 +79,7 @@ defaultOpts = mode Options
     & helpSuffix ["Please ensure you have sufficient rights before running with higher verbosity"]
 
 main ∷ IO ()
-main = do opts    ← cmdArgs "ls-usb 0.1.0.3, (C) Roel van Dijk 2009"
+main = do opts    ← cmdArgs "ls-usb 0.1.0.4, (C) Roel van Dijk 2009-2010"
                             [defaultOpts]
           verbose ← isLoud
           db      ← staticDb
@@ -103,25 +104,25 @@ filterFromOpts opts = andF $ map (filterNonEmpty ∘ ($ opts))
 -------------------------------------------------------------------------------
 -- Filters
 
-type F a = a → Bool
+type F α = α → Bool
 
 -- Construct a filter combinator from a binary boolean operator.
-binBoolOpToFComb ∷ (Bool → Bool → Bool) → F a → F a → F a
+binBoolOpToFComb ∷ (Bool → Bool → Bool) → F α → F α → F α
 binBoolOpToFComb (⊗) f g = \x → f x ⊗ g x
 
-(<∨>) ∷ F a → F a → F a
+(<∨>) ∷ F α → F α → F α
 (<∨>) = binBoolOpToFComb (∨)
 
-(<∧>) ∷ F a → F a → F a
+(<∧>) ∷ F α → F α → F α
 (<∧>) = binBoolOpToFComb (∧)
 
-andF ∷ [F a] → F a
+andF ∷ [F α] → F α
 andF = foldr (<∧>) (const True)
 
-orF ∷ [F a] → F a
+orF ∷ [F α] → F α
 orF = foldr (<∨>) (const False)
 
-filterNonEmpty ∷ [F a] → F a
+filterNonEmpty ∷ [F α] → F α
 filterNonEmpty [] = const True
 filterNonEmpty xs = foldr (<∨>) (const False) xs
 

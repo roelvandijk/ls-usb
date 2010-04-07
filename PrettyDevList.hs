@@ -1,6 +1,8 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE UnicodeSyntax #-}
+{-# LANGUAGE NoImplicitPrelude
+           , RankNTypes
+           , ScopedTypeVariables
+           , UnicodeSyntax
+  #-}
 
 module PrettyDevList
     ( PPStyle(..)
@@ -20,25 +22,29 @@ import Text.PrettyPrint.ANSI.Leijen ( Doc, Pretty, SimpleDoc(..)
                                     )
 
 -- base
-import Control.Arrow             ( (>>>) )
 import Control.Exception         ( catch )
-import Control.Monad             ( fmap, liftM, mapM, return )
+import Control.Monad             ( (>>=), fail, liftM, mapM, return )
 import Data.Bool                 ( Bool(False, True) )
 import Data.Char                 ( String, toLower )
+import Data.Eq                   ( (==) )
 import Data.Function             ( ($), id )
+import Data.Functor              ( fmap )
 import Data.Int                  ( Int )
 import Data.List                 ( intersperse, length, map, maximum
                                  , partition, transpose, zipWith
                                  )
 import Data.Maybe                ( maybe )
 import Data.Word                 ( Word8, Word16 )
-import Prelude                   ( (+), fromIntegral )
+import Prelude                   ( (+), fromIntegral, fromInteger, fromRational )
 import System.IO                 ( IO )
 import Text.Printf               ( PrintfArg, printf )
 import Text.Show                 ( Show, show )
 
 -- base-unicode-symbols
-import Prelude.Unicode           ( (∘), (⋅), (≡) )
+import Control.Arrow.Unicode     ( (⋙) )
+import Data.Function.Unicode     ( (∘) )
+import Data.Eq.Unicode           ( (≡) )
+import Prelude.Unicode           ( (⋅) )
 
 -- bytestring
 import Data.ByteString.Char8     ( ByteString, unpack )
@@ -111,32 +117,32 @@ data PPStyle = PPStyle
 
 brightStyle ∷ PPStyle
 brightStyle = PPStyle
-    { sectionStyle    = pretty >>> white >>> bold >>> underline
+    { sectionStyle    = pretty ⋙ white ⋙ bold ⋙ underline
     , fieldStyle      = pretty
-    , usbNumStyle     = pretty >>> yellow
+    , usbNumStyle     = pretty ⋙ yellow
     , usbStrStyle     = pretty
-    , stringStyle     = pretty >>> green
-    , descrStyle      = pretty >>> cyan >>> dquotes
-    , descrAddrStyle  = pretty >>> cyan >>> bold
-    , versionStyle    = pretty >>> yellow
-    , addrStyle       = pretty >>> magenta
-    , errorStyle      = pretty >>> red
-    , errorDescrStyle = pretty >>> dullred
+    , stringStyle     = pretty ⋙ green
+    , descrStyle      = pretty ⋙ cyan ⋙ dquotes
+    , descrAddrStyle  = pretty ⋙ cyan ⋙ bold
+    , versionStyle    = pretty ⋙ yellow
+    , addrStyle       = pretty ⋙ magenta
+    , errorStyle      = pretty ⋙ red
+    , errorDescrStyle = pretty ⋙ dullred
     }
 
 darkStyle ∷ PPStyle
 darkStyle = PPStyle
-    { sectionStyle    = pretty >>> bold >>> underline
+    { sectionStyle    = pretty ⋙ bold ⋙ underline
     , fieldStyle      = pretty
-    , usbNumStyle     = pretty >>> onyellow
+    , usbNumStyle     = pretty ⋙ onyellow
     , usbStrStyle     = pretty
-    , stringStyle     = pretty >>> ongreen
-    , descrStyle      = pretty >>> oncyan >>> dquotes
-    , descrAddrStyle  = pretty >>> oncyan >>> bold
-    , versionStyle    = pretty >>> onyellow
-    , addrStyle       = pretty >>> onmagenta
-    , errorStyle      = pretty >>> red
-    , errorDescrStyle = pretty >>> dullred
+    , stringStyle     = pretty ⋙ ongreen
+    , descrStyle      = pretty ⋙ oncyan ⋙ dquotes
+    , descrAddrStyle  = pretty ⋙ oncyan ⋙ bold
+    , versionStyle    = pretty ⋙ onyellow
+    , addrStyle       = pretty ⋙ onmagenta
+    , errorStyle      = pretty ⋙ red
+    , errorDescrStyle = pretty ⋙ dullred
     }
 
 -------------------------------------------------------------------------------
@@ -205,7 +211,7 @@ ppStringDesc ∷ PPStyle → Device → StrIx → IO Doc
 ppStringDesc _     _   0  = return empty
 ppStringDesc style dev ix = catchUSBException
     ( with dev $ \devH →
-        liftM (descrStyle style)
+        fmap (descrStyle style)
               $ getStrDescFirstLang devH
                                     ix
                                     stringBufferSize

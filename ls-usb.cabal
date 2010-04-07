@@ -5,7 +5,7 @@ build-type:    Simple
 stability:     beta
 author:        Roel van Dijk <vandijk.roel@gmail.com>
 maintainer:    vandijk.roel@gmail.com
-copyright:     2009 - 2010 Roel van Dijk <vandijk.roel@gmail.com>
+copyright:     2009–2010 Roel van Dijk <vandijk.roel@gmail.com>
 license:       BSD3
 license-file:  LICENSE
 category:      System
@@ -20,7 +20,7 @@ source-repository head
 executable ls-usb
   build-depends: ansi-wl-pprint       >= 0.5.1   && < 0.6
                , base                 >= 4.0     && < 4.3
-               , base-unicode-symbols == 0.1.*
+               , base-unicode-symbols >= 0.1.1   && < 0.3
                , bytestring           >= 0.9.1   && < 0.10
                , cmdargs              == 0.1.*
                , usb                  == 0.3.*
