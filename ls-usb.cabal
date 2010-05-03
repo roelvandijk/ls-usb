@@ -1,5 +1,5 @@
 name:          ls-usb
-version:       0.1.0.4
+version:       0.1.0.5
 cabal-version: >= 1.6
 build-type:    Simple
 stability:     beta
@@ -24,7 +24,7 @@ executable ls-usb
                , bytestring           >= 0.9.1   && < 0.10
                , cmdargs              == 0.1.*
                , usb                  == 0.3.*
-               , usb-safe             >= 0.4     && < 0.6
+               , usb-safe             >= 0.4     && < 0.7
                , usb-id-database      >= 0.4.0.2 && < 0.5
   ghc-options: -Wall -fno-warn-orphans
   main-is: ls-usb.hs

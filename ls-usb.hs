@@ -79,7 +79,7 @@ defaultOpts = mode Options
     & helpSuffix ["Please ensure you have sufficient rights before running with higher verbosity"]
 
 main ∷ IO ()
-main = do opts    ← cmdArgs "ls-usb 0.1.0.4, (C) Roel van Dijk 2009-2010"
+main = do opts    ← cmdArgs "ls-usb 0.1.0.5, (C) Roel van Dijk 2009-2010"
                             [defaultOpts]
           verbose ← isLoud
           db      ← staticDb
