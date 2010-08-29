@@ -10,7 +10,7 @@ module PrettyDevList
     , ppDevices
     ) where
 
--- ansi-wl-pprint
+-- from ansi-wl-pprint:
 import Text.PrettyPrint.ANSI.Leijen ( Doc, Pretty, SimpleDoc(..)
                                     , (<+>), (<$>), (<>)
                                     , align, char, dquotes, empty, fill, hcat
@@ -21,7 +21,7 @@ import Text.PrettyPrint.ANSI.Leijen ( Doc, Pretty, SimpleDoc(..)
                                     , underline, white, yellow
                                     )
 
--- base
+-- from base:
 import Control.Exception         ( catch )
 import Control.Monad             ( (>>=), fail, liftM, mapM, return )
 import Data.Bool                 ( Bool(False, True) )
@@ -40,16 +40,16 @@ import System.IO                 ( IO )
 import Text.Printf               ( PrintfArg, printf )
 import Text.Show                 ( Show, show )
 
--- base-unicode-symbols
+-- from base-unicode-symbols:
 import Control.Arrow.Unicode     ( (⋙) )
 import Data.Function.Unicode     ( (∘) )
 import Data.Eq.Unicode           ( (≡) )
 import Prelude.Unicode           ( (⋅) )
 
--- bytestring
+-- from bytestring:
 import Data.ByteString.Char8     ( ByteString, unpack )
 
--- usb
+-- from usb:
 import System.USB.Descriptors    ( DeviceDesc
                                  , deviceClass, deviceConfigs
                                  , deviceManufacturerStrIx
@@ -85,18 +85,24 @@ import System.USB.Descriptors    ( DeviceDesc
                                  , TransactionOpportunities(Zero, One, Two)
                                  , LangId, StrIx
                                  )
-import System.USB.Safe           ( with, getStrDescFirstLang, getLanguages )
 import System.USB.Enumeration    ( Device
                                  , deviceDesc, busNumber, deviceAddress
                                  )
 import System.USB.Exceptions     ( USBException )
 
--- usb-id-database
+-- from usb-id-database:
 import System.USB.IDDB           ( IDDB
                                  , vendorName, productName
                                  , className, subClassName, protocolName
                                  , langName, subLangName
                                  )
+
+-- from usb-safe:
+import System.USB.Safe           ( withDevice
+                                 , getStrDescFirstLang
+                                 , getLanguages 
+                                 )
+
 
 -------------------------------------------------------------------------------
 -- Pretty printing styles
@@ -210,7 +216,7 @@ ppBCD4 (a, b, c, d) = hcat ∘ punctuate (char '.') $ map pretty [a, b, c, d]
 ppStringDesc ∷ PPStyle → Device → StrIx → IO Doc
 ppStringDesc _     _   0  = return empty
 ppStringDesc style dev ix = catchUSBException
-    ( with dev $ \devH →
+    ( withDevice dev $ \devH →
         fmap (descrStyle style)
               $ getStrDescFirstLang devH
                                     ix
@@ -279,7 +285,7 @@ ppLanguage style db (lid, slid) =
 
 ppLanguageList ∷ PPStyle → IDDB → Device → IO Doc
 ppLanguageList style db dev =
-    catchUSBException ( with dev
+    catchUSBException ( withDevice dev
                       $ fmap (hsep ∘ punctuate (text ", ") ∘ map (ppLanguage style db))
                       ∘ getLanguages
                       )
