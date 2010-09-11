@@ -33,7 +33,7 @@ import Data.Int                  ( Int )
 import Data.List                 ( intersperse, length, map, maximum
                                  , partition, transpose, zipWith
                                  )
-import Data.Maybe                ( maybe )
+import Data.Maybe                ( Maybe(Nothing, Just), maybe )
 import Data.Word                 ( Word8, Word16 )
 import Prelude                   ( (+), fromIntegral, fromInteger, fromRational )
 import System.IO                 ( IO )
@@ -58,7 +58,7 @@ import System.USB.Descriptors    ( DeviceDesc
                                  , deviceProtocol, deviceReleaseNumber
                                  , deviceSerialNumberStrIx, deviceSubClass
                                  , deviceUSBSpecReleaseNumber, deviceVendorId
-                                 , BCD4
+                                 , ReleaseNumber
                                  , ConfigDesc
                                  , configAttribs, configInterfaces
                                  , configMaxPower, configNumInterfaces
@@ -210,12 +210,12 @@ catchUSBException = catch
 unknown ∷ Doc
 unknown = text "unknown"
 
-ppBCD4 ∷ BCD4 → Doc
-ppBCD4 (a, b, c, d) = hcat ∘ punctuate (char '.') $ map pretty [a, b, c, d]
+ppReleaseNumber ∷ ReleaseNumber → Doc
+ppReleaseNumber (a, b, c, d) = hcat ∘ punctuate (char '.') $ map pretty [a, b, c, d]
 
-ppStringDesc ∷ PPStyle → Device → StrIx → IO Doc
-ppStringDesc _     _   0  = return empty
-ppStringDesc style dev ix = catchUSBException
+ppStringDesc ∷ PPStyle → Device → Maybe StrIx → IO Doc
+ppStringDesc _     _   Nothing = return empty
+ppStringDesc style dev (Just ix) = catchUSBException
     ( withDevice dev $ \devH →
         fmap (descrStyle style)
               $ getStrDescFirstLang devH
@@ -366,7 +366,7 @@ ppDeviceDesc style db dev desc = do
         protocolDoc = ppDevProtocol style db classId subClassId protocolId
 
     return $ columns 2
-      [ field' "USB specification" [ versionStyle' ∘ ppBCD4
+      [ field' "USB specification" [ versionStyle' ∘ ppReleaseNumber
                                    $ deviceUSBSpecReleaseNumber desc
                                    ]
       , field' "Class"             [usbNumStyle' classId, classDoc]
@@ -379,7 +379,7 @@ ppDeviceDesc style db dev desc = do
       , field' "Product ID"        [ usbNumStyle' $ text "0x" <> ppId productId
                                    , ppProductName style db vendorId productId id
                                    ]
-      , field' "Release number"    [ versionStyle' ∘ ppBCD4
+      , field' "Release number"    [ versionStyle' ∘ ppReleaseNumber
                                    $ deviceReleaseNumber desc
                                    ]
       , field' "Manufacturer"      [descrAddrStyle' manufacturerIx, manufacturerDoc]
