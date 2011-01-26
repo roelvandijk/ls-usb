@@ -1,4 +1,5 @@
-{-# LANGUAGE NoImplicitPrelude
+{-# LANGUAGE CPP
+           , NoImplicitPrelude
            , RankNTypes
            , ScopedTypeVariables
            , UnicodeSyntax
@@ -23,10 +24,9 @@ import Text.PrettyPrint.ANSI.Leijen ( Doc, Pretty, SimpleDoc(..)
 
 -- from base:
 import Control.Exception         ( catch )
-import Control.Monad             ( (>>=), fail, liftM, mapM, return )
+import Control.Monad             ( liftM, mapM, return )
 import Data.Bool                 ( Bool(False, True) )
 import Data.Char                 ( String, toLower )
-import Data.Eq                   ( (==) )
 import Data.Function             ( ($), id )
 import Data.Functor              ( fmap )
 import Data.Int                  ( Int )
@@ -35,10 +35,16 @@ import Data.List                 ( intersperse, length, map, maximum
                                  )
 import Data.Maybe                ( Maybe(Nothing, Just), maybe )
 import Data.Word                 ( Word8, Word16 )
-import Prelude                   ( (+), fromIntegral, fromInteger, fromRational )
+import Prelude                   ( (+), fromIntegral )
 import System.IO                 ( IO )
 import Text.Printf               ( PrintfArg, printf )
 import Text.Show                 ( Show, show )
+
+#if __GLASGOW_HASKELL__ < 700
+import Control.Monad ( (>>=), fail )
+import Data.Eq       ( (==) )
+import Prelude       ( fromInteger, fromRational )
+#endif
 
 -- from base-unicode-symbols:
 import Control.Arrow.Unicode     ( (⋙) )

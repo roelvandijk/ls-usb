@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, NoImplicitPrelude, UnicodeSyntax #-}
+{-# LANGUAGE CPP, DeriveDataTypeable, NoImplicitPrelude, UnicodeSyntax #-}
 
 module Main where
 
@@ -6,7 +6,7 @@ module Main where
 import Text.PrettyPrint.ANSI.Leijen    ( putDoc, plain )
 
 -- from base:
-import Control.Monad                   ( (>>=), (>>), (=<<), fail )
+import Control.Monad                   ( (=<<) )
 import Data.Bool                       ( Bool(False, True), otherwise )
 import Data.Data                       ( Data )
 import Data.Function                   ( ($), const, id )
@@ -17,6 +17,10 @@ import Data.Word                       ( Word8 )
 import Prelude                         ( fromIntegral )
 import System.IO                       ( IO, putStrLn )
 import Text.Show                       ( Show )
+
+#if __GLASGOW_HASKELL__ < 700
+import Control.Monad ( (>>=), (>>), fail )
+#endif
 
 -- from base-unicode-symbols:
 import Data.Function.Unicode           ( (∘) )
@@ -35,7 +39,9 @@ import PrettyDevList                   ( ppDevices
                                        )
 
 -- from usb:
-import System.USB.Initialization       ( newCtx )
+import System.USB.Initialization       ( Verbosity(PrintNothing)
+                                       , newCtx, setDebug 
+                                       )
 import System.USB.Enumeration          ( Device
                                        , getDevices, deviceDesc
                                        , busNumber, deviceAddress
@@ -83,6 +89,7 @@ main = do opts    ← cmdArgs defaultOpts
           verbose ← isLoud
           db      ← staticDb
           ctx     ← newCtx
+          setDebug ctx PrintNothing
           let style | darker opts = darkStyle
                     | otherwise   = brightStyle
           (putDoc ∘ if nocolour opts then plain else id)
