@@ -81,7 +81,7 @@ defaultOpts = Options
              &= help "Use darker colours (for bright backgrounds)"
   } &= verbosity
     &= help "Lists connected USB devices"
-    &= summary "ls-usb 0.1.0.5, (C) Roel van Dijk 2009-2010"
+    &= summary "ls-usb 0.1.0.9, (C) Roel van Dijk 2009-2010"
     &= details ["Please ensure you have sufficient rights before running with higher verbosity"]
 
 main ∷ IO ()
