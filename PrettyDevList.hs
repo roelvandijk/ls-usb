@@ -52,9 +52,6 @@ import Data.Function.Unicode     ( (∘) )
 import Data.Eq.Unicode           ( (≡) )
 import Prelude.Unicode           ( (⋅) )
 
--- from bytestring:
-import Data.ByteString.Char8     ( ByteString, unpack )
-
 -- from text:
 import qualified Data.Text             as T ( Text, unpack )
 
@@ -171,16 +168,10 @@ section style = sectionStyle style ∘ text
 -------------------------------------------------------------------------------
 -- Some basic instances of the Pretty class
 
-instance Pretty ByteString where
-    pretty = pretty ∘ unpack
-
 instance Pretty T.Text where
     pretty = pretty ∘ T.unpack
 
 instance Pretty Word8 where
-    pretty = int ∘ fromIntegral
-
-instance Pretty Word16 where
     pretty = int ∘ fromIntegral
 
 -------------------------------------------------------------------------------
