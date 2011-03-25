@@ -55,6 +55,9 @@ import Prelude.Unicode           ( (⋅) )
 -- from bytestring:
 import Data.ByteString.Char8     ( ByteString, unpack )
 
+-- from text:
+import qualified Data.Text             as T ( Text, unpack )
+
 -- from usb:
 import System.USB.Descriptors    ( DeviceDesc
                                  , deviceClass, deviceConfigs
@@ -170,6 +173,9 @@ section style = sectionStyle style ∘ text
 
 instance Pretty ByteString where
     pretty = pretty ∘ unpack
+
+instance Pretty T.Text where
+    pretty = pretty ∘ T.unpack
 
 instance Pretty Word8 where
     pretty = int ∘ fromIntegral
