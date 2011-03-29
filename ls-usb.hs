@@ -11,9 +11,10 @@ import Data.Bool                       ( Bool(False, True), otherwise )
 import Data.Data                       ( Data )
 import Data.Function                   ( ($), const, id )
 import Data.Int                        ( Int )
-import Data.List                       ( filter, foldr, map )
+import Data.List                       ( (++), filter, foldr, map )
 import Data.Typeable                   ( Typeable )
 import Data.Word                       ( Word8 )
+import Data.Version                    ( showVersion )
 import Prelude                         ( fromIntegral )
 import System.IO                       ( IO, putStrLn )
 import Text.Show                       ( Show )
@@ -37,6 +38,7 @@ import System.Console.CmdArgs.Implicit ( (&=)
 import PrettyDevList                   ( ppDevices
                                        , brightStyle, darkStyle
                                        )
+import Paths_ls_usb                    ( version )
 
 -- from usb:
 import System.USB.Initialization       ( Verbosity(PrintNothing)
@@ -81,7 +83,7 @@ defaultOpts = Options
              &= help "Use darker colours (for bright backgrounds)"
   } &= verbosity
     &= help "Lists connected USB devices"
-    &= summary "ls-usb 0.1.0.9, (C) Roel van Dijk 2009-2010"
+    &= summary ("ls-usb " ++ showVersion version ++ ", (C) Roel van Dijk 2009-2010")
     &= details ["Please ensure you have sufficient rights before running with higher verbosity"]
 
 main ∷ IO ()
