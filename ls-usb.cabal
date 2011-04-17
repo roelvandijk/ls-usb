@@ -14,8 +14,8 @@ description:
   A small utility that lists USB devices connected to your system.
 
 source-repository head
-  type:     darcs
-  location: http://code.haskell.org/~roelvandijk/code/ls-usb
+  type:     git
+  location: git://github.com/roelvandijk/ls-usb.git
 
 executable ls-usb
   build-depends: ansi-wl-pprint       >= 0.5.1   && < 0.7
