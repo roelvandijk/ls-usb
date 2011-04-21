@@ -4,14 +4,15 @@ cabal-version: >= 1.6
 build-type:    Simple
 stability:     beta
 author:        Roel van Dijk <vandijk.roel@gmail.com>
-maintainer:    vandijk.roel@gmail.com
+maintainer:    Roel van Dijk <vandijk.roel@gmail.com>
 copyright:     2009–2011 Roel van Dijk <vandijk.roel@gmail.com>
 license:       BSD3
 license-file:  LICENSE
 category:      System
 synopsis:      List USB devices
 description:
-  A small utility that lists USB devices connected to your system.
+  A small utility for displaying information about USB devices
+  connected to your system.
 
 source-repository head
   type:     git

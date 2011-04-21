@@ -5,6 +5,12 @@
            , UnicodeSyntax
   #-}
 
+{-|
+Module     : PrettyDevList
+Copyright  : 2009–2011 Roel van Dijk
+License    : BSD3 (see the file LICENSE)
+Maintainer : Roel van Dijk <vandijk.roel@gmail.com>
+-}
 module PrettyDevList
     ( PPStyle(..)
     , brightStyle, darkStyle
@@ -106,7 +112,7 @@ import System.USB.IDDB           ( IDDB
 -- from usb-safe:
 import System.USB.Safe           ( withDevice
                                  , getStrDescFirstLang
-                                 , getLanguages 
+                                 , getLanguages
                                  )
 
 

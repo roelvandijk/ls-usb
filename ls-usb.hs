@@ -1,5 +1,11 @@
 {-# LANGUAGE CPP, DeriveDataTypeable, NoImplicitPrelude, UnicodeSyntax #-}
 
+{-|
+Module     : Main
+Copyright  : 2009–2011 Roel van Dijk
+License    : BSD3 (see the file LICENSE)
+Maintainer : Roel van Dijk <vandijk.roel@gmail.com>
+-}
 module Main where
 
 -- from ansi-wl-pprint:
@@ -42,7 +48,7 @@ import Paths_ls_usb                    ( version )
 
 -- from usb:
 import System.USB.Initialization       ( Verbosity(PrintNothing)
-                                       , newCtx, setDebug 
+                                       , newCtx, setDebug
                                        )
 import System.USB.Enumeration          ( Device
                                        , getDevices, deviceDesc
