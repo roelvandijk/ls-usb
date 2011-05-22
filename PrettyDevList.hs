@@ -4,6 +4,8 @@
            , ScopedTypeVariables
            , UnicodeSyntax
   #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 
 {-|
 Module     : PrettyDevList
@@ -58,16 +60,18 @@ import Prelude       ( fromInteger, fromRational )
 #endif
 
 -- from base-unicode-symbols:
-import Control.Arrow.Unicode     ( (⋙) )
-import Data.Function.Unicode     ( (∘) )
-import Data.Eq.Unicode           ( (≡) )
-import Prelude.Unicode           ( (⋅) )
+import Control.Arrow.Unicode ( (⋙) )
+import Data.Function.Unicode ( (∘) )
+import Data.Eq.Unicode       ( (≡) )
+import Prelude.Unicode       ( (⋅) )
 
 -- from text:
 import qualified Data.Text as T ( Text, unpack )
 
 -- from usb:
-import System.USB.Descriptors    ( DeviceDesc
+import System.USB.Descriptors    ( getLanguages
+                                 , getStrDescFirstLang
+                                 , DeviceDesc
                                  , deviceClass, deviceConfigs
                                  , deviceManufacturerStrIx
                                  , deviceMaxPacketSize0, deviceNumConfigs
@@ -102,23 +106,18 @@ import System.USB.Descriptors    ( DeviceDesc
                                  , TransactionOpportunities(Zero, One, Two)
                                  , LangId, StrIx
                                  )
+import System.USB.DeviceHandling ( withDeviceHandle )
 import System.USB.Enumeration    ( Device
                                  , deviceDesc, busNumber, deviceAddress
                                  )
 import System.USB.Exceptions     ( USBException )
 
 -- from usb-id-database:
-import System.USB.IDDB           ( IDDB
-                                 , vendorName, productName
-                                 , className, subClassName, protocolName
-                                 , langName, subLangName
-                                 )
-
--- from usb-safe:
-import System.USB.Safe           ( withDevice
-                                 , getStrDescFirstLang
-                                 , getLanguages
-                                 )
+import System.USB.IDDB ( IDDB
+                       , vendorName, productName
+                       , className, subClassName, protocolName
+                       , langName, subLangName
+                       )
 
 
 --------------------------------------------------------------------------------
@@ -239,7 +238,7 @@ ppReleaseNumber (a, b, c, d) = hcat ∘ punctuate (char '.') $ map pretty [a, b,
 ppStringDesc ∷ PPStyle → Device → Maybe StrIx → IO Doc
 ppStringDesc _     _   Nothing = return empty
 ppStringDesc style dev (Just ix) = catchUSBException
-    ( withDevice dev $ \devH →
+    ( withDeviceHandle dev $ \devH →
         fmap (descrStyle style)
               $ getStrDescFirstLang devH
                                     ix
@@ -308,7 +307,7 @@ ppLanguage style db (lid, slid) =
 
 ppLanguageList ∷ PPStyle → IDDB → Device → IO Doc
 ppLanguageList style db dev =
-    catchUSBException ( withDevice dev
+    catchUSBException ( withDeviceHandle dev
                       $ fmap (hsep ∘ punctuate (text ", ") ∘ map (ppLanguage style db))
                       ∘ getLanguages
                       )

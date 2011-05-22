@@ -1,5 +1,5 @@
 name:          ls-usb
-version:       0.1.0.9
+version:       0.1.0.10
 cabal-version: >= 1.6
 build-type:    Simple
 stability:     beta
@@ -23,10 +23,9 @@ executable ls-usb
                , base                 >= 4.0     && < 4.4
                , base-unicode-symbols >= 0.1.1   && < 0.3
                , text                 >= 0.1     && < 0.12
-               , cmdargs              >= 0.3     && < 0.7
-               , usb                  >= 0.8     && < 0.9
+               , cmdargs              >= 0.3     && < 0.8
+               , usb                  >= 1.0     && < 1.1
                , usb-id-database      >= 0.4.0.2 && < 0.5
-               , usb-safe             >= 0.12    && < 0.13
-  ghc-options: -Wall -fno-warn-orphans
+  ghc-options: -Wall
   main-is: ls-usb.hs
   other-modules: PrettyDevList
