@@ -17,6 +17,11 @@ module PrettyDevList
     , ppDevices
     ) where
 
+
+--------------------------------------------------------------------------------
+-- Imports
+--------------------------------------------------------------------------------
+
 -- from ansi-wl-pprint:
 import Text.PrettyPrint.ANSI.Leijen ( Doc, Pretty, SimpleDoc(..)
                                     , (<+>), (<$>), (<>)
@@ -29,22 +34,22 @@ import Text.PrettyPrint.ANSI.Leijen ( Doc, Pretty, SimpleDoc(..)
                                     )
 
 -- from base:
-import Control.Exception         ( catch )
-import Control.Monad             ( liftM, mapM, return )
-import Data.Bool                 ( Bool(False, True) )
-import Data.Char                 ( String, toLower )
-import Data.Function             ( ($), id )
-import Data.Functor              ( fmap )
-import Data.Int                  ( Int )
-import Data.List                 ( intersperse, length, map, maximum
-                                 , partition, transpose, zipWith
-                                 )
-import Data.Maybe                ( Maybe(Nothing, Just), maybe )
-import Data.Word                 ( Word8, Word16 )
-import Prelude                   ( (+), fromIntegral )
-import System.IO                 ( IO )
-import Text.Printf               ( PrintfArg, printf )
-import Text.Show                 ( Show, show )
+import Control.Exception ( catch )
+import Control.Monad     ( liftM, mapM, return )
+import Data.Bool         ( Bool(False, True) )
+import Data.Char         ( String, toLower )
+import Data.Function     ( ($), id )
+import Data.Functor      ( fmap )
+import Data.Int          ( Int )
+import Data.List         ( intersperse, length, map, maximum
+                         , partition, transpose, zipWith
+                         )
+import Data.Maybe        ( Maybe(Nothing, Just), maybe )
+import Data.Word         ( Word8, Word16 )
+import Prelude           ( (+), fromIntegral )
+import System.IO         ( IO )
+import Text.Printf       ( PrintfArg, printf )
+import Text.Show         ( Show, show )
 
 #if __GLASGOW_HASKELL__ < 700
 import Control.Monad ( (>>=), fail )
@@ -59,7 +64,7 @@ import Data.Eq.Unicode           ( (≡) )
 import Prelude.Unicode           ( (⋅) )
 
 -- from text:
-import qualified Data.Text             as T ( Text, unpack )
+import qualified Data.Text as T ( Text, unpack )
 
 -- from usb:
 import System.USB.Descriptors    ( DeviceDesc
@@ -116,21 +121,22 @@ import System.USB.Safe           ( withDevice
                                  )
 
 
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- Pretty printing styles
+--------------------------------------------------------------------------------
 
 data PPStyle = PPStyle
-    { sectionStyle    ∷ ∀ α. Pretty α ⇒ α → Doc
-    , fieldStyle      ∷ ∀ α. Pretty α ⇒ α → Doc
-    , usbNumStyle     ∷ ∀ α. Pretty α ⇒ α → Doc
-    , usbStrStyle     ∷ ∀ α. Pretty α ⇒ α → Doc
-    , stringStyle     ∷ ∀ α. Pretty α ⇒ α → Doc
-    , descrStyle      ∷ ∀ α. Pretty α ⇒ α → Doc
-    , descrAddrStyle  ∷ ∀ α. Pretty α ⇒ α → Doc
-    , versionStyle    ∷ ∀ α. Pretty α ⇒ α → Doc
-    , addrStyle       ∷ ∀ α. Pretty α ⇒ α → Doc
-    , errorStyle      ∷ ∀ α. Pretty α ⇒ α → Doc
-    , errorDescrStyle ∷ ∀ α. Pretty α ⇒ α → Doc
+    { sectionStyle    ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , fieldStyle      ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , usbNumStyle     ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , usbStrStyle     ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , stringStyle     ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , descrStyle      ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , descrAddrStyle  ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , versionStyle    ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , addrStyle       ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , errorStyle      ∷ ∀ α. (Pretty α) ⇒ α → Doc
+    , errorDescrStyle ∷ ∀ α. (Pretty α) ⇒ α → Doc
     }
 
 brightStyle ∷ PPStyle
@@ -163,7 +169,7 @@ darkStyle = PPStyle
     , errorDescrStyle = pretty ⋙ dullred
     }
 
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 field ∷ PPStyle → String → [Doc] → [Doc]
 field style name xs = (fieldStyle style $ (text name) <> char ':') : xs
@@ -171,8 +177,10 @@ field style name xs = (fieldStyle style $ (text name) <> char ':') : xs
 section ∷ PPStyle → String → Doc
 section style = sectionStyle style ∘ text
 
--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 -- Some basic instances of the Pretty class
+--------------------------------------------------------------------------------
 
 instance Pretty T.Text where
     pretty = pretty ∘ T.unpack
@@ -180,8 +188,10 @@ instance Pretty T.Text where
 instance Pretty Word8 where
     pretty = int ∘ fromIntegral
 
--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 -- Miscellaneous pretty printing functions
+--------------------------------------------------------------------------------
 
 columns ∷ Int → [[Doc]] → Doc
 columns s rows = vcat $ map ( hcat
@@ -204,8 +214,10 @@ docLen = sdocLen ∘ renderPretty 0.4 100
       sdocLen (SLine i d)   = i + sdocLen d
       sdocLen (SSGR _ d)    = sdocLen d
 
--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 -- USB utility functions
+--------------------------------------------------------------------------------
 
 stringBufferSize ∷ Int
 stringBufferSize = 512
@@ -213,8 +225,10 @@ stringBufferSize = 512
 catchUSBException ∷ IO α → (USBException → IO α) → IO α
 catchUSBException = catch
 
--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 -- Pretty printers for USB types
+--------------------------------------------------------------------------------
 
 unknown ∷ Doc
 unknown = text "unknown"
@@ -459,8 +473,10 @@ ppInterfaceDesc style db dev ifDesc = do
                      $ outEndpts
                )
 
--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 -- USB specific instances of Pretty
+--------------------------------------------------------------------------------
 
 class PrettyStyle α where
     pretty' ∷ PPStyle → α → Doc

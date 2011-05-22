@@ -8,6 +8,11 @@ Maintainer : Roel van Dijk <vandijk.roel@gmail.com>
 -}
 module Main where
 
+
+--------------------------------------------------------------------------------
+-- Imports
+--------------------------------------------------------------------------------
+
 -- from ansi-wl-pprint:
 import Text.PrettyPrint.ANSI.Leijen    ( putDoc, plain )
 
@@ -62,8 +67,9 @@ import System.USB.Descriptors          ( VendorId, ProductId
 import System.USB.IDDB.LinuxUsbIdRepo  ( staticDb )
 
 
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- Main
+--------------------------------------------------------------------------------
 
 data Options = Options { vid      ∷ [Int]
                        , pid      ∷ [Int]
@@ -115,8 +121,9 @@ filterFromOpts opts = andF $ map (filterNonEmpty ∘ ($ opts))
                       ]
 
 
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- Filters
+--------------------------------------------------------------------------------
 
 type F α = α → Bool
 
@@ -140,8 +147,10 @@ filterNonEmpty ∷ [F α] → F α
 filterNonEmpty [] = const True
 filterNonEmpty xs = foldr (<∨>) (const False) xs
 
--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 -- Specific Device filters
+--------------------------------------------------------------------------------
 
 matchVID ∷ VendorId → F Device
 matchVID vid' = (vid' ≡) ∘ deviceVendorId ∘ deviceDesc
