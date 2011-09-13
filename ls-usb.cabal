@@ -8,6 +8,8 @@ maintainer:    Roel van Dijk <vandijk.roel@gmail.com>
 copyright:     2009–2011 Roel van Dijk <vandijk.roel@gmail.com>
 license:       BSD3
 license-file:  LICENSE
+homepage:      https://github.com/roelvandijk/ls-usb
+bug-reports:   https://github.com/roelvandijk/ls-usb/issues
 category:      System
 synopsis:      List USB devices
 description:
@@ -20,10 +22,10 @@ source-repository head
 
 executable ls-usb
   build-depends: ansi-wl-pprint       >= 0.5.1   && < 0.7
-               , base                 >= 4.0     && < 4.4
+               , base                 >= 4.0     && < 4.5
                , base-unicode-symbols >= 0.1.1   && < 0.3
                , text                 >= 0.1     && < 0.12
-               , cmdargs              >= 0.3     && < 0.8
+               , cmdargs              >= 0.3     && < 0.9
                , usb                  >= 1.0     && < 1.1
                , usb-id-database      >= 0.4.0.2 && < 0.5
   ghc-options: -Wall
