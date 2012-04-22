@@ -1,15 +1,15 @@
-{-# LANGUAGE CPP
-           , NoImplicitPrelude
-           , RankNTypes
-           , ScopedTypeVariables
-           , UnicodeSyntax
-  #-}
+{-# LANGUAGE CPP                 #-}
+{-# LANGUAGE NoImplicitPrelude   #-}
+{-# LANGUAGE PackageImports      #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE UnicodeSyntax       #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 
 {-|
 Module     : PrettyDevList
-Copyright  : 2009–2011 Roel van Dijk
+Copyright  : 2009–2012 Roel van Dijk
 License    : BSD3 (see the file LICENSE)
 Maintainer : Roel van Dijk <vandijk.roel@gmail.com>
 -}
@@ -24,100 +24,53 @@ module PrettyDevList
 -- Imports
 --------------------------------------------------------------------------------
 
--- from ansi-wl-pprint:
-import Text.PrettyPrint.ANSI.Leijen ( Doc, Pretty, SimpleDoc(..)
-                                    , (<+>), (<$>), (<>)
-                                    , align, char, dquotes, empty, fill, hcat
-                                    , hsep, indent, int, pretty, punctuate
-                                    , renderPretty, text, vcat
-                                    , bold, cyan, dullred, green, magenta
-                                    , oncyan, ongreen, onmagenta, onyellow, red
-                                    , underline, white, yellow
-                                    )
-
--- from base:
-import Control.Exception ( catch )
-import Control.Monad     ( liftM, mapM, return )
-import Data.Bool         ( Bool(False, True) )
-import Data.Char         ( toLower )
-import Data.Function     ( ($), id )
-import Data.Functor      ( fmap )
-import Data.Int          ( Int )
-import Data.List         ( intersperse, length, map, maximum
-                         , partition, transpose, zipWith
-                         )
-import Data.Maybe        ( Maybe(Nothing, Just), maybe )
-import Data.Word         ( Word8, Word16 )
-import Prelude           ( String, (+), fromIntegral )
-import System.IO         ( IO )
-import Text.Printf       ( PrintfArg, printf )
-import Text.Show         ( Show, show )
+import "ansi-wl-pprint" Text.PrettyPrint.ANSI.Leijen
+    ( Doc, Pretty, SimpleDoc(..)
+    , (<+>), (<$>), (<>)
+    , align, char, dquotes, empty, fill, hcat
+    , hsep, indent, int, pretty, punctuate
+    , renderPretty, text, vcat
+    , bold, cyan, dullred, green, magenta
+    , oncyan, ongreen, onmagenta, onyellow, red
+    , underline, white, yellow
+    )
+import "base" Control.Exception ( catch )
+import "base" Control.Monad     ( liftM, mapM, return )
+import "base" Data.Bool         ( Bool(False, True) )
+import "base" Data.Char         ( toLower )
+import "base" Data.Function     ( ($), id )
+import "base" Data.Functor      ( fmap )
+import "base" Data.Int          ( Int )
+import "base" Data.List
+    ( intersperse, length, map, maximum, partition, transpose, zipWith )
+import "base" Data.Maybe        ( Maybe(Nothing, Just), maybe )
+import "base" Data.Word         ( Word8, Word16 )
+import "base" Prelude           ( String, (+), fromIntegral )
+import "base" System.IO         ( IO )
+import "base" Text.Printf       ( PrintfArg, printf )
+import "base" Text.Show         ( Show, show )
 
 #if __GLASGOW_HASKELL__ < 700
-import Control.Monad ( (>>=), fail )
-import Data.Eq       ( (==) )
-import Prelude       ( fromInteger, fromRational )
+import "base" Control.Monad ( (>>=), fail )
+import "base" Data.Eq       ( (==) )
+import "base" Prelude       ( fromInteger, fromRational )
 #endif
-
--- from base-unicode-symbols:
-import Control.Arrow.Unicode ( (⋙) )
-import Data.Function.Unicode ( (∘) )
-import Data.Eq.Unicode       ( (≡) )
-import Prelude.Unicode       ( (⋅) )
-
--- from text:
-import qualified Data.Text as T ( Text, unpack )
-
--- from usb:
-import System.USB.Descriptors    ( getLanguages
-                                 , getStrDescFirstLang
-                                 , DeviceDesc
-                                 , deviceClass, deviceConfigs
-                                 , deviceManufacturerStrIx
-                                 , deviceMaxPacketSize0, deviceNumConfigs
-                                 , deviceProductId, deviceProductStrIx
-                                 , deviceProtocol, deviceReleaseNumber
-                                 , deviceSerialNumberStrIx, deviceSubClass
-                                 , deviceUSBSpecReleaseNumber, deviceVendorId
-                                 , ReleaseNumber
-                                 , ConfigDesc
-                                 , configAttribs, configInterfaces
-                                 , configMaxPower, configNumInterfaces
-                                 , configStrIx, configValue
-                                 , DeviceStatus
-                                 , remoteWakeup, selfPowered
-                                 , InterfaceDesc
-                                 , interfaceAltSetting, interfaceClass
-                                 , interfaceEndpoints, interfaceNumber
-                                 , interfaceProtocol, interfaceStrIx
-                                 , interfaceSubClass
-                                 , EndpointDesc
-                                 , endpointAddress, endpointAttribs
-                                 , endpointInterval, endpointMaxPacketSize
-                                 , endpointRefresh, endpointSynchAddress
-                                 , EndpointAddress
-                                 , endpointNumber, transferDirection
-                                 , TransferDirection(In, Out)
-                                 , TransferType(Isochronous)
-                                 , Synchronization(NoSynchronization)
-                                 , Usage
-                                 , MaxPacketSize
-                                 , maxPacketSize, transactionOpportunities
-                                 , TransactionOpportunities(Zero, One, Two)
-                                 , LangId, StrIx
-                                 )
-import System.USB.DeviceHandling ( withDeviceHandle )
-import System.USB.Enumeration    ( Device
-                                 , deviceDesc, busNumber, deviceAddress
-                                 )
-import System.USB.Exceptions     ( USBException )
-
--- from usb-id-database:
-import System.USB.IDDB ( IDDB
-                       , vendorName, productName
-                       , className, subClassName, protocolName
-                       , langName, subLangName
-                       )
+import "base-unicode-symbols" Control.Arrow.Unicode ( (⋙) )
+import "base-unicode-symbols" Data.Function.Unicode ( (∘) )
+import "base-unicode-symbols" Data.Eq.Unicode       ( (≡) )
+import "base-unicode-symbols" Prelude.Unicode       ( (⋅) )
+import qualified "text" Data.Text as T ( Text, unpack )
+import "usb" System.USB.Descriptors
+import "usb" System.USB.DeviceHandling ( withDeviceHandle )
+import "usb" System.USB.Enumeration
+    ( Device, deviceDesc, busNumber, deviceAddress )
+import "usb" System.USB.Exceptions ( USBException )
+import "usb-id-database" System.USB.IDDB
+    ( IDDB
+    , vendorName, productName
+    , className, subClassName, protocolName
+    , langName, subLangName
+    )
 
 
 --------------------------------------------------------------------------------

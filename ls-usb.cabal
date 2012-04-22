@@ -1,11 +1,11 @@
 name:          ls-usb
-version:       0.1.0.10
+version:       0.1.0.11
 cabal-version: >= 1.6
 build-type:    Simple
 stability:     beta
 author:        Roel van Dijk <vandijk.roel@gmail.com>
 maintainer:    Roel van Dijk <vandijk.roel@gmail.com>
-copyright:     2009–2011 Roel van Dijk <vandijk.roel@gmail.com>
+copyright:     2009–2012 Roel van Dijk <vandijk.roel@gmail.com>
 license:       BSD3
 license-file:  LICENSE
 homepage:      https://github.com/roelvandijk/ls-usb

@@ -1,8 +1,12 @@
-{-# LANGUAGE CPP, DeriveDataTypeable, NoImplicitPrelude, UnicodeSyntax #-}
+{-# LANGUAGE CPP                #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE NoImplicitPrelude  #-}
+{-# LANGUAGE PackageImports     #-}
+{-# LANGUAGE UnicodeSyntax      #-}
 
 {-|
 Module     : Main
-Copyright  : 2009–2011 Roel van Dijk
+Copyright  : 2009–2012 Roel van Dijk
 License    : BSD3 (see the file LICENSE)
 Maintainer : Roel van Dijk <vandijk.roel@gmail.com>
 -}
@@ -13,58 +17,39 @@ module Main where
 -- Imports
 --------------------------------------------------------------------------------
 
--- from ansi-wl-pprint:
-import Text.PrettyPrint.ANSI.Leijen    ( putDoc, plain )
-
--- from base:
-import Control.Monad                   ( (=<<) )
-import Data.Bool                       ( Bool(False, True), otherwise )
-import Data.Data                       ( Data )
-import Data.Function                   ( ($), const, id )
-import Data.Int                        ( Int )
-import Data.List                       ( (++), filter, foldr, map )
-import Data.Typeable                   ( Typeable )
-import Data.Word                       ( Word8 )
-import Data.Version                    ( showVersion )
-import Prelude                         ( fromIntegral )
-import System.IO                       ( IO, putStrLn )
-import Text.Show                       ( Show )
-
+import "ansi-wl-pprint" Text.PrettyPrint.ANSI.Leijen ( putDoc, plain )
+import "base" Control.Monad ( (=<<) )
+import "base" Data.Bool     ( Bool(False, True), otherwise )
+import "base" Data.Data     ( Data )
+import "base" Data.Function ( ($), const, id )
+import "base" Data.Int      ( Int )
+import "base" Data.List     ( (++), filter, foldr, map )
+import "base" Data.Typeable ( Typeable )
+import "base" Data.Word     ( Word8 )
+import "base" Data.Version  ( showVersion )
+import "base" Prelude       ( fromIntegral )
+import "base" System.IO     ( IO, putStrLn )
+import "base" Text.Show     ( Show )
 #if __GLASGOW_HASKELL__ < 700
-import Control.Monad ( (>>=), (>>), fail )
+import "base" Control.Monad ( (>>=), (>>), fail )
 #endif
-
--- from base-unicode-symbols:
-import Data.Function.Unicode           ( (∘) )
-import Data.Bool.Unicode               ( (∧), (∨) )
-import Data.Eq.Unicode                 ( (≡) )
-
--- from cmdargs:
-import System.Console.CmdArgs.Implicit ( (&=)
-                                       , cmdArgs, def, details, explicit, help
-                                       , isLoud, name, summary, typ, verbosity
-                                       )
-
--- from ls-usb (this package):
-import PrettyDevList                   ( ppDevices
-                                       , brightStyle, darkStyle
-                                       )
-import Paths_ls_usb                    ( version )
-
--- from usb:
-import System.USB.Initialization       ( Verbosity(PrintNothing)
-                                       , newCtx, setDebug
-                                       )
-import System.USB.Enumeration          ( Device
-                                       , getDevices, deviceDesc
-                                       , busNumber, deviceAddress
-                                       )
-import System.USB.Descriptors          ( VendorId, ProductId
-                                       , deviceVendorId, deviceProductId
-                                       )
-
--- from usb-id-database:
-import System.USB.IDDB.LinuxUsbIdRepo  ( staticDb )
+import "base-unicode-symbols" Data.Function.Unicode ( (∘) )
+import "base-unicode-symbols" Data.Bool.Unicode     ( (∧), (∨) )
+import "base-unicode-symbols" Data.Eq.Unicode       ( (≡) )
+import "cmdargs" System.Console.CmdArgs.Implicit
+    ( (&=)
+    , cmdArgs, def, details, explicit, help
+    , isLoud, name, summary, typ, verbosity
+    )
+import "this" PrettyDevList ( ppDevices, brightStyle, darkStyle )
+import "this" Paths_ls_usb  ( version )
+import "usb" System.USB.Initialization
+    ( Verbosity(PrintNothing), newCtx, setDebug )
+import "usb" System.USB.Enumeration
+    ( Device, getDevices, deviceDesc, busNumber, deviceAddress )
+import "usb" System.USB.Descriptors
+    ( VendorId, ProductId, deviceVendorId, deviceProductId )
+import "usb-id-database" System.USB.IDDB.LinuxUsbIdRepo  ( staticDb )
 
 
 --------------------------------------------------------------------------------
