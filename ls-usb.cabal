@@ -1,5 +1,5 @@
 name:          ls-usb
-version:       0.1.0.11
+version:       0.1.0.12
 cabal-version: >= 1.6
 build-type:    Simple
 stability:     beta
@@ -22,10 +22,10 @@ source-repository head
 
 executable ls-usb
   build-depends: ansi-wl-pprint       >= 0.5.1   && < 0.7
-               , base                 >= 4.0     && < 4.6
+               , base                 >= 4.0     && < 4.7
                , base-unicode-symbols >= 0.1.1   && < 0.3
                , text                 >= 0.1     && < 0.12
-               , cmdargs              >= 0.3     && < 0.10
+               , cmdargs              >= 0.3     && < 0.11
                , usb                  >= 1.0     && < 1.2
                , usb-id-database      >= 0.4.0.2 && < 0.5
   ghc-options: -Wall
