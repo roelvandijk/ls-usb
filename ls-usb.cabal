@@ -1,5 +1,5 @@
 name:          ls-usb
-version:       0.1.0.12
+version:       0.1.0.13
 cabal-version: >= 1.6
 build-type:    Simple
 stability:     beta
