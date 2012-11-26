@@ -14,7 +14,8 @@ License    : BSD3 (see the file LICENSE)
 Maintainer : Roel van Dijk <vandijk.roel@gmail.com>
 -}
 module PrettyDevList
-    ( PPStyle(..)
+    ( DescribedDevice(..)
+    , PPStyle(..)
     , brightStyle, darkStyle
     , ppDevices
     ) where
@@ -35,7 +36,7 @@ import "ansi-wl-pprint" Text.PrettyPrint.ANSI.Leijen
     , underline, white, yellow
     )
 import "base" Control.Exception ( catch )
-import "base" Control.Monad     ( liftM, mapM, return )
+import "base" Control.Monad     ( (<=<), liftM, mapM, return )
 import "base" Data.Bool         ( Bool(False, True) )
 import "base" Data.Char         ( toLower )
 import "base" Data.Function     ( ($), id )
@@ -45,7 +46,7 @@ import "base" Data.List
     ( intersperse, length, map, maximum, partition, transpose, zipWith )
 import "base" Data.Maybe        ( Maybe(Nothing, Just), maybe )
 import "base" Data.Word         ( Word8, Word16 )
-import "base" Prelude           ( String, (+), fromIntegral )
+import "base" Prelude           ( String, (+), (-), fromIntegral )
 import "base" System.IO         ( IO )
 import "base" Text.Printf       ( PrintfArg, printf )
 import "base" Text.Show         ( Show, show )
@@ -63,7 +64,7 @@ import qualified "text" Data.Text as T ( Text, unpack )
 import "usb" System.USB.Descriptors
 import "usb" System.USB.DeviceHandling ( withDeviceHandle )
 import "usb" System.USB.Enumeration
-    ( Device, deviceDesc, busNumber, deviceAddress )
+    ( Device, busNumber, deviceAddress )
 import "usb" System.USB.Exceptions ( USBException )
 import "usb-id-database" System.USB.IDDB
     ( IDDB
@@ -71,7 +72,11 @@ import "usb-id-database" System.USB.IDDB
     , className, subClassName, protocolName
     , langName, subLangName
     )
+import qualified "vector" Data.Vector as V ( length, toList )
 
+data DescribedDevice = DD { device     ∷ Device
+                          , deviceDesc ∷ DeviceDesc
+                          }
 
 --------------------------------------------------------------------------------
 -- Pretty printing styles
@@ -261,14 +266,14 @@ ppLanguage style db (lid, slid) =
 ppLanguageList ∷ PPStyle → IDDB → Device → IO Doc
 ppLanguageList style db dev =
     catchUSBException ( withDeviceHandle dev
-                      $ fmap (hsep ∘ punctuate (text ", ") ∘ map (ppLanguage style db))
+                      $ fmap (hsep ∘ punctuate (text ", ") ∘ map (ppLanguage style db) ∘ V.toList)
                       ∘ getLanguages
                       )
                       ( return
                       ∘ ppError style "Couldn't retrieve language list"
                       )
 
-ppDevices ∷ PPStyle → IDDB → Bool → [Device] → IO Doc
+ppDevices ∷ PPStyle → IDDB → Bool → [DescribedDevice] → IO Doc
 ppDevices style db False = liftM vcat ∘ mapM (ppDeviceShort style db)
 ppDevices style db True  = liftM (vcat ∘ intersperse (char ' '))
                            ∘ mapM (ppDevice style db)
@@ -277,10 +282,9 @@ ppAddr ∷ PrintfArg n ⇒ PPStyle → n → Doc
 ppAddr style a = let toDoc = addrStyle style ∷ String → Doc
                  in toDoc $ printf "%03d" a
 
-ppDeviceShort ∷ PPStyle → IDDB → Device → IO Doc
-ppDeviceShort style db dev = do
-  let desc       = deviceDesc dev
-      vid        = deviceVendorId  desc
+ppDeviceShort ∷ PPStyle → IDDB → DescribedDevice → IO Doc
+ppDeviceShort style db (DD dev desc) = do
+  let vid        = deviceVendorId  desc
       pid        = deviceProductId desc
       busDoc     = ppAddr style $ busNumber dev
       devAddrDoc = ppAddr style $ deviceAddress dev
@@ -293,9 +297,8 @@ ppDeviceShort style db dev = do
          <+> ppVendorName style db vid
              (<+> ppProductName style db vid pid (char '-' <+>))
 
-ppDevice ∷ PPStyle → IDDB → Device → IO Doc
-ppDevice style db dev = do
-  let desc = deviceDesc dev
+ppDevice ∷ PPStyle → IDDB → DescribedDevice → IO Doc
+ppDevice style db (DD dev desc) = do
   descDoc ← ppDeviceDesc style db dev desc
   langDoc ← ppLanguageList style db dev
 
@@ -333,8 +336,9 @@ ppDeviceDesc style db dev desc = do
     manufacturerDoc ← ppStringDesc style dev manufacturerIx
     productDoc      ← ppStringDesc style dev productIx
     serialDoc       ← ppStringDesc style dev serialIx
-    configDocs      ← mapM (ppConfigDesc style db dev)
-                           $ deviceConfigs desc
+
+    configDocs <- mapM (ppConfigDesc style db dev <=< getConfigDesc dev)
+                       [0..numConfigs-1]
 
     let classDoc    = ppDevClass    style db classId
         subClassDoc = ppDevSubClass style db classId subClassId
@@ -374,7 +378,8 @@ ppConfigDesc style db dev conf = do
       ifDescs      = configInterfaces conf
 
   strDesc    ← ppStringDesc style dev stringIx
-  ifDescDocs ← mapM (mapM $ ppInterfaceDesc style db dev) ifDescs
+  ifDescDocs ← mapM (mapM (ppInterfaceDesc style db dev) ∘ V.toList) $
+                    V.toList ifDescs
 
   let vcatAlts = (<$>) (section style "Interface")
                ∘ indent 2
@@ -388,7 +393,7 @@ ppConfigDesc style db dev conf = do
     , field' "Descriptor"     [descrAddrStyle style stringIx, strDesc]
     , field' "Attributes"     [pretty' style (configAttribs conf)]
     , field' "Max power"      [usbNumStyle' (2 ⋅ configMaxPower conf) <+> text "mA"]
-    , field' "Num interfaces" [usbNumStyle' $ configNumInterfaces conf]
+    , field' "Num interfaces" [usbNumStyle' $ fromIntegral $ V.length ifDescs]
     ] <$> vcat (map vcatAlts ifDescDocs)
 
 ppInterfaceDesc ∷ PPStyle → IDDB → Device → InterfaceDesc → IO Doc
@@ -405,7 +410,7 @@ ppInterfaceDesc style db dev ifDesc = do
       protocolDoc     = ppProtocol style db classId subClassId protocolId
       (inEndpts, outEndpts) =
           partition ((In ≡) ∘ transferDirection ∘ endpointAddress)
-                    $ interfaceEndpoints ifDesc
+                    $ V.toList $ interfaceEndpoints ifDesc
 
   strDesc ← ppStringDesc style dev stringIx
 
