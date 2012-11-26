@@ -22,8 +22,9 @@ import "base" Control.Monad ( (=<<) )
 import "base" Data.Bool     ( Bool(False, True), otherwise )
 import "base" Data.Data     ( Data )
 import "base" Data.Function ( ($), const, id )
+import "base" Data.Functor  ( (<$>), fmap )
 import "base" Data.Int      ( Int )
-import "base" Data.List     ( (++), filter, foldr, map )
+import "base" Data.List     ( (++), foldr, map )
 import "base" Data.Typeable ( Typeable )
 import "base" Data.Word     ( Word8 )
 import "base" Data.Version  ( showVersion )
@@ -41,16 +42,16 @@ import "cmdargs" System.Console.CmdArgs.Implicit
     , cmdArgs, def, details, explicit, help
     , isLoud, name, summary, typ, verbosity
     )
-import "this" PrettyDevList ( ppDevices, brightStyle, darkStyle )
+import "this" PrettyDevList ( DescribedDevice(..), ppDevices, brightStyle, darkStyle )
 import "this" Paths_ls_usb  ( version )
 import "usb" System.USB.Initialization
     ( Verbosity(PrintNothing), newCtx, setDebug )
 import "usb" System.USB.Enumeration
-    ( Device, getDevices, deviceDesc, busNumber, deviceAddress )
+    ( getDevices, busNumber, deviceAddress )
 import "usb" System.USB.Descriptors
-    ( VendorId, ProductId, deviceVendorId, deviceProductId )
+    ( VendorId, ProductId, getDeviceDesc, deviceVendorId, deviceProductId )
 import "usb-id-database" System.USB.IDDB.LinuxUsbIdRepo  ( staticDb )
-
+import qualified "vector" Data.Vector as V
 
 --------------------------------------------------------------------------------
 -- Main
@@ -89,15 +90,20 @@ main = do opts    ← cmdArgs defaultOpts
           db      ← staticDb
           ctx     ← newCtx
           setDebug ctx PrintNothing
+
+          devs ← fmap (V.toList ∘ V.filter (filterFromOpts opts)) ∘
+                   V.mapM (\dev -> DD dev <$> getDeviceDesc dev) =<<
+                     getDevices ctx
+
           let style | darker opts = darkStyle
                     | otherwise   = brightStyle
+
           (putDoc ∘ if nocolour opts then plain else id)
-              =<< ppDevices style db verbose
-              ∘   filter (filterFromOpts opts)
-              =<< getDevices ctx
+              =<< ppDevices style db verbose devs
+
           putStrLn ""
 
-filterFromOpts ∷ Options → F Device
+filterFromOpts ∷ Options → F DescribedDevice
 filterFromOpts opts = andF $ map (filterNonEmpty ∘ ($ opts))
                       [ map (matchVID     ∘ fromIntegral) ∘ vid
                       , map (matchPID     ∘ fromIntegral) ∘ pid
@@ -137,14 +143,14 @@ filterNonEmpty xs = foldr (<∨>) (const False) xs
 -- Specific Device filters
 --------------------------------------------------------------------------------
 
-matchVID ∷ VendorId → F Device
+matchVID ∷ VendorId → F DescribedDevice
 matchVID vid' = (vid' ≡) ∘ deviceVendorId ∘ deviceDesc
 
-matchPID ∷ ProductId → F Device
+matchPID ∷ ProductId → F DescribedDevice
 matchPID pid' = (pid' ≡) ∘ deviceProductId ∘ deviceDesc
 
-matchBus ∷ Word8 → F Device
-matchBus bus' = (bus' ≡) ∘ busNumber
+matchBus ∷ Word8 → F DescribedDevice
+matchBus bus' = (bus' ≡) ∘ busNumber ∘ device
 
-matchDevAddr ∷ Word8 → F Device
-matchDevAddr addr = (addr ≡) ∘ deviceAddress
+matchDevAddr ∷ Word8 → F DescribedDevice
+matchDevAddr addr = (addr ≡) ∘ deviceAddress ∘ device

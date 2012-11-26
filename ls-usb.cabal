@@ -26,8 +26,9 @@ executable ls-usb
                , base-unicode-symbols >= 0.1.1   && < 0.3
                , text                 >= 0.1     && < 0.12
                , cmdargs              >= 0.3     && < 0.11
-               , usb                  >= 1.0     && < 1.2
+               , usb                  >= 1.2     && < 1.3
                , usb-id-database      >= 0.4.0.2 && < 0.5
+               , vector               >= 0.5     && < 0.11
   ghc-options: -Wall
   main-is: ls-usb.hs
   other-modules: PrettyDevList
