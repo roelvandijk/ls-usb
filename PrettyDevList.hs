@@ -337,7 +337,10 @@ ppDeviceDesc style db dev desc = do
     productDoc      ← ppStringDesc style dev productIx
     serialDoc       ← ppStringDesc style dev serialIx
 
-    configDocs <- mapM (ppConfigDesc style db dev <=< getConfigDesc dev)
+    configDocs <- mapM (\c -> catchUSBException
+                           (ppConfigDesc style db dev <=< getConfigDesc dev $ c)
+                           (return ∘ ppError style "Cannot obtain config" )
+                       )
                        [0..numConfigs-1]
 
     let classDoc    = ppDevClass    style db classId
