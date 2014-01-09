@@ -1,5 +1,5 @@
 name:          ls-usb
-version:       0.1.1
+version:       0.1.2
 cabal-version: >= 1.6
 build-type:    Simple
 stability:     beta
@@ -21,10 +21,10 @@ source-repository head
   location: git://github.com/roelvandijk/ls-usb.git
 
 executable ls-usb
-  build-depends: ansi-wl-pprint       >= 0.5.1   && < 0.7
+  build-depends: ansi-wl-pprint       >= 0.6.7   && < 0.7
                , base                 >= 4.0     && < 4.7
                , base-unicode-symbols >= 0.1.1   && < 0.3
-               , text                 >= 0.1     && < 0.12
+               , text                 >= 0.1     && < 1.1.1
                , cmdtheline           >= 0.2.1.1 && < 0.3
                , usb                  >= 1.2     && < 1.3
                , usb-id-database      >= 0.4.0.2 && < 0.5

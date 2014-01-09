@@ -165,6 +165,7 @@ docLen ∷ Doc → Int
 docLen = sdocLen ∘ renderPretty 0.4 100
     where
       sdocLen ∷ SimpleDoc → Int
+      sdocLen (SFail)       = 0
       sdocLen (SEmpty)      = 0
       sdocLen (SChar _ d)   = 1 + sdocLen d
       sdocLen (SText i _ d) = i + sdocLen d
